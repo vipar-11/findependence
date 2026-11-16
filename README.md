@@ -47,9 +47,11 @@ findependence/
 │   ├── main.py                         # REST API routes & static SPA server
 │   ├── schemas.py                      # Pydantic v2 validation models
 │   └── static/
-│       ├── index.html                  # Visual dashboard (Tailwind CSS + Chart.js)
-│       ├── css/styles.css
-│       └── js/app.js
+│       ├── index.html                  # Visual dashboard (Self-contained CSS + Local Canvas Charts)
+│       ├── css/styles.css              # Local financial design system (zero external CDNs)
+│       └── js/
+│           ├── chart.js                # Local zero-dependency Canvas chart engine
+│           └── app.js
 └── tests/
     └── test_finlib_and_api.py          # Unit & integration tests
 ```

@@ -352,3 +352,22 @@ def test_fixed_income_first_withdrawal_and_taxable_rebalancing() -> None:
     # Year 3 (index 2) has Known Future Expense ("Marriage") inflated by 2 years of 6% CPI
     assert pytest.approx(out["known_expense_incurred"][0, 2], rel=1e-4) == 15_00_000.0 * (1.06**2)
 
+
+def test_self_contained_static_css_and_js_no_external_cdns() -> None:
+    r_index = client.get("/")
+    assert r_index.status_code == 200
+    html_text = r_index.text
+    assert "cdn.tailwindcss.com" not in html_text
+    assert "cdn.jsdelivr.net" not in html_text
+    assert "/static/css/styles.css" in html_text
+    assert "/static/js/chart.js" in html_text
+
+    r_css = client.get("/static/css/styles.css")
+    assert r_css.status_code == 200
+    assert ".hidden { display: none !important; }" in r_css.text
+
+    r_chart = client.get("/static/js/chart.js")
+    assert r_chart.status_code == 200
+    assert "LocalChart" in r_chart.text
+
+
