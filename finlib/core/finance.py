@@ -1,0 +1,566 @@
+"""
+Reusable financial calculation primitives for Indian FIRE & retirement simulators.
+
+Includes:
+- Indian numbering system formatting (₹, Lakhs, Crores)
+- Real vs. nominal return conversions (Fisher equation)
+- Multi-factor expense inflation projection (base CPI + lifestyle creep)
+- Vectorized multi-asset portfolio drawdown with:
+  - Fixed-Income-first withdrawal priority & separate tax rates (30% Debt, 12.5% Equity)
+  - Periodic rebalancing with capital gains / income taxation effects
+  - Periodic Home Improvement expenses (% ± variance of property value every X years)
+  - Random annual shock expenses (at today's ₹ ± variance, indexed to inflation, with annual probability)
+  - Known future tagged expenses (Marriage, Education, etc. at today's ₹ indexed to inflation)
+- Statistical & percentile aggregators for longevity and wealth trajectories
+"""
+
+from __future__ import annotations
+
+from typing import Any, Literal
+import numpy as np
+
+PropertyTreatmentMode = Literal[
+    "liquidate_fallback",
+    "illiquid_with_rent",
+    "illiquid_excluded",
+    "rebalanced",
+]
+
+
+def format_inr(amount: float) -> str:
+    """Format a number in the Indian numbering system (e.g., ₹1,23,45,678)."""
+    sign = "-" if amount < 0 else ""
+    val = int(round(abs(amount)))
+    s = str(val)
+    if len(s) <= 3:
+        return f"{sign}₹{s}"
+    last3 = s[-3:]
+    rest = s[:-3]
+    groups = []
+    while len(rest) > 2:
+        groups.append(rest[-2:])
+        rest = rest[:-2]
+    if rest:
+        groups.append(rest)
+    groups.reverse()
+    return f"{sign}₹{','.join(groups)},{last3}"
+
+
+def format_inr_compact(amount: float, decimals: int = 2) -> str:
+    """Format an INR amount compactly into Crores (Cr) or Lakhs (L)."""
+    sign = "-" if amount < 0 else ""
+    abs_val = abs(amount)
+    if abs_val >= 1_00_00_000:
+        return f"{sign}₹{abs_val / 1_00_00_000:.{decimals}f} Cr"
+    if abs_val >= 1_00_000:
+        return f"{sign}₹{abs_val / 1_00_000:.{decimals}f} L"
+    if abs_val >= 1_000:
+        return f"{sign}₹{abs_val / 1_000:.1f} K"
+    return f"{sign}₹{abs_val:.0f}"
+
+
+def fisher_real_return(nominal_return: float | np.ndarray, inflation_rate: float | np.ndarray) -> float | np.ndarray:
+    """Compute exact real return using Fisher's equation: (1 + r_nom) / (1 + i) - 1."""
+    return (1.0 + nominal_return) / (1.0 + inflation_rate) - 1.0
+
+
+def project_expenses(
+    initial_annual_expense: float,
+    horizon_years: int,
+    inflation_rates: np.ndarray,
+    lifestyle_inflation_rate: float = 0.0,
+    post_retirement_multiplier: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Project annual base living expenses across `horizon_years` for `n_paths` simulations.
+
+    Returns
+    -------
+    expenses_nominal : np.ndarray of shape (n_paths, horizon_years)
+        Nominal annual base living expense needed in each simulation year.
+    cumulative_cpi_deflator : np.ndarray of shape (n_paths, horizon_years + 1)
+        Cumulative price index starting at 1.0 at Year 0, used to convert between
+        today's purchasing power and future nominal rupees.
+    """
+    n_paths = inflation_rates.shape[0]
+    base_year0 = initial_annual_expense * post_retirement_multiplier
+
+    cumulative_cpi = np.ones((n_paths, horizon_years + 1), dtype=np.float64)
+    for t in range(horizon_years):
+        cumulative_cpi[:, t + 1] = cumulative_cpi[:, t] * (1.0 + inflation_rates[:, t])
+
+    expenses_nominal = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    expenses_nominal[:, 0] = base_year0
+    for t in range(1, horizon_years):
+        effective_escalation = (1.0 + inflation_rates[:, t - 1]) * (1.0 + lifestyle_inflation_rate)
+        expenses_nominal[:, t] = expenses_nominal[:, t - 1] * effective_escalation
+
+    return expenses_nominal, cumulative_cpi
+
+
+def simulate_portfolio_paths(
+    total_corpus: float,
+    equity_weight: float,
+    fixed_income_weight: float,
+    property_weight: float,
+    initial_annual_expense: float,
+    equity_returns: np.ndarray,
+    fixed_income_returns: np.ndarray,
+    property_returns: np.ndarray,
+    inflation_rates: np.ndarray,
+    lifestyle_inflation_rate: float = 0.0,
+    post_retirement_multiplier: float = 1.0,
+    property_mode: PropertyTreatmentMode = "liquidate_fallback",
+    property_rental_yield: float = 0.025,
+    property_liquidation_haircut: float = 0.10,
+    # Rebalancing configuration
+    rebalance_annually: bool = True,
+    rebalance_enabled: bool | None = None,
+    rebalance_frequency_years: int = 2,
+    # Taxation configuration (Default: 30% on Fixed Income, 12.5% on Equity)
+    fixed_income_tax_rate: float = 0.30,
+    equity_tax_rate: float = 0.125,
+    effective_tax_rate: float | None = None,
+    # Medical insurance status
+    has_medical_insurance: bool = True,
+    # Home improvement configuration (% ± variance of property value every X years)
+    home_improvement_enabled: bool = False,
+    home_improvement_interval_years: int = 5,
+    home_improvement_pct_of_property: float = 0.03,
+    home_improvement_variance_pct: float = 0.01,
+    # Random shock expense configuration (at today's ₹ ± variance, adjusted for inflation)
+    random_expense_enabled: bool = False,
+    random_expense_base_inr: float = 3_00_000.0,
+    random_expense_variance_pct: float = 0.30,
+    random_expense_annual_probability: float = 0.15,
+    # Known future expenses by year at today's value [{years_from_now, amount_today_inr, event_tag}]
+    known_future_expenses: list[dict[str, Any]] | None = None,
+    seed: int | None = 12345,
+) -> dict[str, Any]:
+    """
+    Vectorized multi-asset portfolio drawdown simulator across `n_paths` over `horizon_years`.
+
+    Key Rules:
+    1. Annual withdrawals are ALWAYS drawn from Fixed Income first (taxed at `fixed_income_tax_rate`, default 30%).
+       Only when Fixed Income is insufficient is the shortfall drawn from Equity (taxed at `equity_tax_rate`, default 12.5%).
+    2. Periodic Rebalancing occurs every `rebalance_frequency_years` (default 2 years) back to the initial
+       asset allocation, incurring tax (`equity_tax_rate` when selling Equity, `fixed_income_tax_rate` when selling Debt).
+    3. Supports periodic Home Improvement expenses, probabilistic Random Shock expenses, and Known Future Tagged Expenses.
+    """
+    n_paths, horizon_years = equity_returns.shape
+    rng = np.random.default_rng(seed)
+
+    # Support legacy callers that passed `effective_tax_rate`
+    tau_fi = float(np.clip(fixed_income_tax_rate if effective_tax_rate is None else effective_tax_rate, 0.0, 0.60))
+    tau_eq = float(np.clip(equity_tax_rate if effective_tax_rate is None else effective_tax_rate, 0.0, 0.60))
+    reb_freq = max(1, int(rebalance_frequency_years))
+    if rebalance_enabled is not None:
+        rebalance_annually = bool(rebalance_enabled)
+
+    base_expenses_nominal, cumulative_cpi = project_expenses(
+        initial_annual_expense=initial_annual_expense,
+        horizon_years=horizon_years,
+        inflation_rates=inflation_rates,
+        lifestyle_inflation_rate=lifestyle_inflation_rate,
+        post_retirement_multiplier=post_retirement_multiplier,
+    )
+
+    # Map known future expenses by year index t (where years_from_now = t + 1)
+    known_by_year_today: dict[int, float] = {}
+    known_tags_by_year: dict[int, list[str]] = {}
+    if known_future_expenses:
+        for item in known_future_expenses:
+            y_offset = int(item.get("years_from_now", 0))
+            amt_today = float(item.get("amount_today_inr", 0.0))
+            tag = str(item.get("event_tag", "Planned Expense")).strip() or "Planned Expense"
+            if 1 <= y_offset <= horizon_years and amt_today > 0:
+                t_idx = y_offset - 1
+                known_by_year_today[t_idx] = known_by_year_today.get(t_idx, 0.0) + amt_today
+                known_tags_by_year.setdefault(t_idx, []).append(f"{tag} ({format_inr_compact(amt_today)} today)")
+
+    # Initial buckets at t = 0
+    eq_val = np.full(n_paths, total_corpus * equity_weight, dtype=np.float64)
+    fi_val = np.full(n_paths, total_corpus * fixed_income_weight, dtype=np.float64)
+    prop_val = np.full(n_paths, total_corpus * property_weight, dtype=np.float64)
+    prop_liquidated = np.zeros(n_paths, dtype=bool)
+
+    fin_total_w = equity_weight + fixed_income_weight
+    if fin_total_w > 1e-9:
+        target_eq_fin_ratio = equity_weight / fin_total_w
+        target_fi_fin_ratio = fixed_income_weight / fin_total_w
+    else:
+        target_eq_fin_ratio = 0.5
+        target_fi_fin_ratio = 0.5
+
+    drawable_nominal = np.zeros((n_paths, horizon_years + 1), dtype=np.float64)
+    net_worth_nominal = np.zeros((n_paths, horizon_years + 1), dtype=np.float64)
+    rental_income_series = np.zeros((n_paths, horizon_years), dtype=np.float64)
+
+    # Detailed tracking matrices for tabular output & charts
+    home_imp_nominal = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    random_shock_nominal = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    known_event_nominal = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    total_expenses_nominal = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    withdrawn_fi_gross = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    withdrawn_eq_gross = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    withdrawal_tax_paid = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    rebalance_direction = np.zeros((n_paths, horizon_years), dtype=np.int8)  # 1: Eq->FI, -1: FI->Eq, 0: None
+    rebalance_sold_gross = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    rebalance_tax_paid = np.zeros((n_paths, horizon_years), dtype=np.float64)
+
+    def _get_drawable(eq: np.ndarray, fi: np.ndarray, prop: np.ndarray) -> np.ndarray:
+        if property_mode in ("liquidate_fallback", "rebalanced"):
+            haircut_factor = (
+                (1.0 - property_liquidation_haircut)
+                if property_mode == "liquidate_fallback"
+                else 1.0
+            )
+            return eq + fi + prop * haircut_factor
+        return eq + fi
+
+    drawable_nominal[:, 0] = _get_drawable(eq_val, fi_val, prop_val)
+    net_worth_nominal[:, 0] = eq_val + fi_val + prop_val
+
+    years_lasted = np.full(n_paths, float(horizon_years), dtype=np.float64)
+    depleted_mask = np.zeros(n_paths, dtype=bool)
+
+    zero_start = drawable_nominal[:, 0] <= 1.0
+    years_lasted[zero_start] = 0.0
+    depleted_mask[zero_start] = True
+
+    # If user does NOT have medical insurance, out-of-pocket medical shock exposure is higher:
+    # Even if random_expense_enabled is False, lack of medical insurance introduces a baseline
+    # uninsured hospitalization shock risk (12% annual chance of ₹2.5L today's value), or amplifies
+    # user-configured random expenses by 1.35x amount and +8% annual probability.
+    effective_random_enabled = random_expense_enabled or (not has_medical_insurance)
+    if random_expense_enabled:
+        eff_rand_base = random_expense_base_inr * (1.0 if has_medical_insurance else 1.35)
+        eff_rand_var = random_expense_variance_pct
+        eff_rand_prob = min(1.0, random_expense_annual_probability + (0.0 if has_medical_insurance else 0.08))
+    else:
+        eff_rand_base = 2_50_000.0
+        eff_rand_var = 0.35
+        eff_rand_prob = 0.12 if not has_medical_insurance else 0.0
+
+    for t in range(horizon_years):
+        active = ~depleted_mask
+        if not np.any(active):
+            break
+
+        # 1. Rental income from property
+        if property_mode in ("liquidate_fallback", "illiquid_with_rent", "rebalanced"):
+            rent_t = np.where(prop_val > 0, prop_val * property_rental_yield, 0.0)
+        else:
+            rent_t = np.zeros(n_paths, dtype=np.float64)
+        rental_income_series[:, t] = rent_t
+
+        # 2. Periodic Home Improvement Expense (every X years as % ± variance of property value)
+        if (
+            home_improvement_enabled
+            and home_improvement_interval_years > 0
+            and ((t + 1) % int(home_improvement_interval_years) == 0)
+        ):
+            low_p = max(0.0, home_improvement_pct_of_property - home_improvement_variance_pct)
+            high_p = max(low_p, home_improvement_pct_of_property + home_improvement_variance_pct)
+            sampled_prop_pct = rng.uniform(low_p, high_p, size=n_paths)
+            home_imp_t = np.where(active & (prop_val > 0), prop_val * sampled_prop_pct, 0.0)
+        else:
+            home_imp_t = np.zeros(n_paths, dtype=np.float64)
+        home_imp_nominal[:, t] = home_imp_t
+
+        # 3. Random Shock Expense (at today's ₹ ± variance, inflated by cumulative_cpi[:, t])
+        if effective_random_enabled and eff_rand_prob > 0 and eff_rand_base > 0:
+            triggers = active & (rng.random(n_paths) < eff_rand_prob)
+            low_mult = max(0.0, 1.0 - eff_rand_var)
+            high_mult = max(low_mult, 1.0 + eff_rand_var)
+            shock_today = eff_rand_base * rng.uniform(low_mult, high_mult, size=n_paths)
+            shock_nom_t = np.where(triggers, shock_today * cumulative_cpi[:, t], 0.0)
+        else:
+            shock_nom_t = np.zeros(n_paths, dtype=np.float64)
+        random_shock_nominal[:, t] = shock_nom_t
+
+        # 4. Known Future Tagged Expenses in year t (inflated from today's ₹ by cumulative_cpi[:, t])
+        if t in known_by_year_today:
+            known_nom_t = np.where(active, known_by_year_today[t] * cumulative_cpi[:, t], 0.0)
+        else:
+            known_nom_t = np.zeros(n_paths, dtype=np.float64)
+        known_event_nominal[:, t] = known_nom_t
+
+        # Total cash outflow required in year t before tax
+        tot_exp_t = base_expenses_nominal[:, t] + home_imp_t + shock_nom_t + known_nom_t
+        total_expenses_nominal[:, t] = tot_exp_t
+        net_need = np.maximum(0.0, tot_exp_t - rent_t)
+
+        # 5. Check Property Fallback Liquidation if financial assets cannot cover net_need
+        max_net_from_fin = fi_val * (1.0 - tau_fi) + eq_val * (1.0 - tau_eq)
+        if property_mode == "liquidate_fallback":
+            need_liq = active & (max_net_from_fin < net_need) & (prop_val > 0) & (~prop_liquidated)
+            if np.any(need_liq):
+                realized_prop = prop_val[need_liq] * (1.0 - property_liquidation_haircut)
+                # Put liquidated property proceeds into Fixed Income first (or target split)
+                eq_val[need_liq] += realized_prop * target_eq_fin_ratio
+                fi_val[need_liq] += realized_prop * target_fi_fin_ratio
+                prop_val[need_liq] = 0.0
+                prop_liquidated[need_liq] = True
+                max_net_from_fin = fi_val * (1.0 - tau_fi) + eq_val * (1.0 - tau_eq)
+        elif property_mode == "rebalanced":
+            # Fold property into financial pool at start of withdrawal step
+            max_net_from_fin = (
+                fi_val * (1.0 - tau_fi)
+                + (eq_val + prop_val) * (1.0 - tau_eq)
+            )
+
+        # 6. Check for portfolio depletion
+        newly_depleted = active & (max_net_from_fin <= net_need) & (net_need > 0)
+        if np.any(newly_depleted):
+            frac = np.clip(max_net_from_fin[newly_depleted] / np.maximum(1.0, net_need[newly_depleted]), 0.0, 1.0)
+            years_lasted[newly_depleted] = float(t) + frac
+            withdrawn_fi_gross[newly_depleted, t] = fi_val[newly_depleted]
+            withdrawn_eq_gross[newly_depleted, t] = eq_val[newly_depleted]
+            withdrawal_tax_paid[newly_depleted, t] = (
+                fi_val[newly_depleted] * tau_fi + eq_val[newly_depleted] * tau_eq
+            )
+            eq_val[newly_depleted] = 0.0
+            fi_val[newly_depleted] = 0.0
+            if property_mode in ("liquidate_fallback", "rebalanced"):
+                prop_val[newly_depleted] = 0.0
+            depleted_mask[newly_depleted] = True
+
+        # 7. Perform Withdrawal: ALWAYS FROM FIXED INCOME FIRST (30% tax), then Equity (12.5% tax)
+        still_active = active & (~newly_depleted)
+        if np.any(still_active):
+            need_s = net_need[still_active]
+            fi_s = fi_val[still_active]
+            eq_s = eq_val[still_active]
+
+            # Max net cash that Fixed Income can supply after Fixed Income tax
+            max_net_fi = fi_s * (1.0 - tau_fi)
+
+            # Case 1: Fixed Income covers the entire net withdrawal
+            fi_sufficient = max_net_fi >= need_s
+            gross_fi = np.where(
+                fi_sufficient,
+                need_s / max(1e-6, 1.0 - tau_fi),
+                fi_s,
+            )
+            net_from_fi = gross_fi * (1.0 - tau_fi)
+            rem_net_for_eq = np.maximum(0.0, need_s - net_from_fi)
+            gross_eq = rem_net_for_eq / max(1e-6, 1.0 - tau_eq)
+
+            fi_val[still_active] = np.maximum(0.0, fi_s - gross_fi)
+            if property_mode == "rebalanced":
+                # If eq_s < gross_eq, draw remainder from prop_val
+                eq_draw = np.minimum(eq_s, gross_eq)
+                prop_draw = np.maximum(0.0, gross_eq - eq_draw)
+                eq_val[still_active] = np.maximum(0.0, eq_s - eq_draw)
+                prop_val[still_active] = np.maximum(0.0, prop_val[still_active] - prop_draw)
+            else:
+                eq_val[still_active] = np.maximum(0.0, eq_s - gross_eq)
+
+            withdrawn_fi_gross[still_active, t] = gross_fi
+            withdrawn_eq_gross[still_active, t] = gross_eq
+            withdrawal_tax_paid[still_active, t] = gross_fi * tau_fi + gross_eq * tau_eq
+
+        # 8. Apply annual market returns to remaining assets
+        surviving = ~depleted_mask
+        if np.any(surviving):
+            eq_val[surviving] = np.maximum(0.0, eq_val[surviving] * (1.0 + equity_returns[surviving, t]))
+            fi_val[surviving] = np.maximum(0.0, fi_val[surviving] * (1.0 + fixed_income_returns[surviving, t]))
+
+        has_prop = prop_val > 0
+        if np.any(has_prop):
+            prop_val[has_prop] = np.maximum(0.0, prop_val[has_prop] * (1.0 + property_returns[has_prop, t]))
+
+        # 9. Periodic Rebalancing (every `reb_freq` years) back to initial allocation with Taxation Effects
+        is_rebalance_year = rebalance_annually and ((t + 1) % reb_freq == 0)
+        if is_rebalance_year and np.any(surviving) and fin_total_w > 1e-9:
+            r_eq = target_eq_fin_ratio
+            r_fi = target_fi_fin_ratio
+
+            eq_surv = eq_val[surviving]
+            fi_surv = fi_val[surviving]
+            imbalance = r_fi * eq_surv - r_eq * fi_surv  # > 0 means Equity is overweight; < 0 means Debt is overweight
+
+            dir_arr = np.zeros(len(eq_surv), dtype=np.int8)
+            sold_arr = np.zeros(len(eq_surv), dtype=np.float64)
+            tax_arr = np.zeros(len(eq_surv), dtype=np.float64)
+
+            # Overweight Equity -> sell Equity (taxed at tau_eq = 12.5%), buy Fixed Income
+            ow_eq = imbalance > 100.0
+            if np.any(ow_eq):
+                denom_eq = r_fi + r_eq * (1.0 - tau_eq)
+                sell_eq = imbalance[ow_eq] / max(1e-6, denom_eq)
+                tax_eq_reb = sell_eq * tau_eq
+                eq_surv[ow_eq] = np.maximum(0.0, eq_surv[ow_eq] - sell_eq)
+                fi_surv[ow_eq] += sell_eq - tax_eq_reb
+                dir_arr[ow_eq] = 1
+                sold_arr[ow_eq] = sell_eq
+                tax_arr[ow_eq] = tax_eq_reb
+
+            # Overweight Fixed Income -> sell Fixed Income (taxed at tau_fi = 30%), buy Equity
+            ow_fi = imbalance < -100.0
+            if np.any(ow_fi):
+                denom_fi = r_eq + r_fi * (1.0 - tau_fi)
+                sell_fi = (-imbalance[ow_fi]) / max(1e-6, denom_fi)
+                tax_fi_reb = sell_fi * tau_fi
+                fi_surv[ow_fi] = np.maximum(0.0, fi_surv[ow_fi] - sell_fi)
+                eq_surv[ow_fi] += sell_fi - tax_fi_reb
+                dir_arr[ow_fi] = -1
+                sold_arr[ow_fi] = sell_fi
+                tax_arr[ow_fi] = tax_fi_reb
+
+            eq_val[surviving] = eq_surv
+            fi_val[surviving] = fi_surv
+            rebalance_direction[surviving, t] = dir_arr
+            rebalance_sold_gross[surviving, t] = sold_arr
+            rebalance_tax_paid[surviving, t] = tax_arr
+
+        drawable_nominal[:, t + 1] = _get_drawable(eq_val, fi_val, prop_val)
+        net_worth_nominal[:, t + 1] = eq_val + fi_val + prop_val
+
+    drawable_real = drawable_nominal / cumulative_cpi
+    net_worth_real = net_worth_nominal / cumulative_cpi
+    expenses_real = total_expenses_nominal / cumulative_cpi[:, :-1]
+
+    return {
+        "years_lasted": years_lasted,
+        "depleted_mask": depleted_mask,
+        "drawable_nominal": drawable_nominal,
+        "drawable_real": drawable_real,
+        "net_worth_nominal": net_worth_nominal,
+        "net_worth_real": net_worth_real,
+        "base_expenses_nominal": base_expenses_nominal,
+        "expenses_nominal": total_expenses_nominal,
+        "expenses_real": expenses_real,
+        "home_improvement_nominal": home_imp_nominal,
+        "random_shock_nominal": random_shock_nominal,
+        "known_event_nominal": known_event_nominal,
+        "known_expense_incurred": known_event_nominal,
+        "known_tags_by_year": known_tags_by_year,
+        "rental_income_nominal": rental_income_series,
+        "withdrawn_fi_gross": withdrawn_fi_gross,
+        "withdrawn_from_fi_gross": withdrawn_fi_gross,
+        "withdrawn_eq_gross": withdrawn_eq_gross,
+        "withdrawn_from_eq_gross": withdrawn_eq_gross,
+        "withdrawal_tax_paid": withdrawal_tax_paid,
+        "rebalance_direction": rebalance_direction,
+        "rebalance_sold_gross": rebalance_sold_gross,
+        "rebalance_tax_paid": rebalance_tax_paid,
+        "cumulative_cpi": cumulative_cpi,
+    }
+
+
+def compute_longevity_stats(
+    years_lasted: np.ndarray,
+    current_age: int,
+    target_horizon: int,
+) -> dict[str, Any]:
+    """Compute statistical percentiles and survival summary for corpus longevity."""
+    p10 = float(np.percentile(years_lasted, 10))
+    p25 = float(np.percentile(years_lasted, 25))
+    p50 = float(np.percentile(years_lasted, 50))
+    p75 = float(np.percentile(years_lasted, 75))
+    p90 = float(np.percentile(years_lasted, 90))
+    mean_years = float(np.mean(years_lasted))
+    std_years = float(np.std(years_lasted))
+
+    success_rate = float(np.mean(years_lasted >= (target_horizon - 1e-6))) * 100.0
+
+    return {
+        "success_probability_pct": round(success_rate, 1),
+        "mean_years": round(mean_years, 1),
+        "std_dev_years": round(std_years, 1),
+        "percentiles_years": {
+            "p10": round(p10, 1),
+            "p25": round(p25, 1),
+            "p50": round(p50, 1),
+            "p75": round(p75, 1),
+            "p90": round(p90, 1),
+        },
+        "depletion_ages": {
+            "p10": round(current_age + p10, 1),
+            "p25": round(current_age + p25, 1),
+            "p50": round(current_age + p50, 1),
+            "p75": round(current_age + p75, 1),
+            "p90": round(current_age + p90, 1),
+        },
+    }
+
+
+def compute_trajectory_percentiles(
+    corpus_matrix: np.ndarray,
+    current_age: int,
+) -> dict[str, list[float | int]]:
+    """
+    Compute year-by-year P10, P25, P50, P75, P90 wealth trajectories across simulations.
+    """
+    n_steps = corpus_matrix.shape[1]
+    ages = [current_age + t for t in range(n_steps)]
+    years_offset = list(range(n_steps))
+
+    pcts = np.percentile(corpus_matrix, [10, 25, 50, 75, 90], axis=0)
+    return {
+        "years_offset": years_offset,
+        "ages": ages,
+        "p10": [round(float(x), 0) for x in pcts[0]],
+        "p25": [round(float(x), 0) for x in pcts[1]],
+        "p50": [round(float(x), 0) for x in pcts[2]],
+        "p75": [round(float(x), 0) for x in pcts[3]],
+        "p90": [round(float(x), 0) for x in pcts[4]],
+        "mean": [round(float(x), 0) for x in np.mean(corpus_matrix, axis=0)],
+    }
+
+
+def compute_survival_curve(
+    drawable_matrix: np.ndarray,
+    current_age: int,
+) -> dict[str, list[float | int]]:
+    """Compute portfolio survival probability (%) at each age from current_age to horizon end."""
+    n_steps = drawable_matrix.shape[1]
+    ages = [current_age + t for t in range(n_steps)]
+    survival_pct = np.mean(drawable_matrix > 1.0, axis=0) * 100.0
+    return {
+        "ages": ages,
+        "survival_probability_pct": [round(float(x), 1) for x in survival_pct],
+    }
+
+
+def compute_longevity_histogram(
+    years_lasted: np.ndarray,
+    horizon_years: int,
+    bucket_size: int = 5,
+) -> list[dict[str, Any]]:
+    """Group simulation longevity outcomes into clean histogram buckets."""
+    buckets: list[dict[str, Any]] = []
+    n_total = len(years_lasted)
+    if n_total == 0:
+        return buckets
+
+    for start in range(0, horizon_years, bucket_size):
+        end = min(start + bucket_size, horizon_years)
+        if end == horizon_years:
+            mask = (years_lasted >= start) & (years_lasted < horizon_years - 1e-6)
+        else:
+            mask = (years_lasted >= start) & (years_lasted < end)
+        count = int(np.sum(mask))
+        buckets.append(
+            {
+                "label": f"{start}–{end} yrs",
+                "min_year": start,
+                "max_year": end,
+                "count": count,
+                "percentage": round(count / n_total * 100.0, 1),
+            }
+        )
+
+    survived_count = int(np.sum(years_lasted >= horizon_years - 1e-6))
+    buckets.append(
+        {
+            "label": f"{horizon_years}+ yrs (Sustained)",
+            "min_year": horizon_years,
+            "max_year": horizon_years,
+            "count": survived_count,
+            "percentage": round(survived_count / n_total * 100.0, 1),
+        }
+    )
+    return buckets

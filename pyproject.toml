@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "findependence"
+version = "1.1.0"
+description = "Financial Independence & Wealth Longevity Simulation Platform for India"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.9.0",
+    "numpy>=2.0.0",
+    "openpyxl>=3.1.0",
+    "xlrd>=2.0.1",
+    "python-multipart>=0.0.9",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

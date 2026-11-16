@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FinDependence India — Can I Retire Today?</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+
+<body class="min-h-screen antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- Header with Pluggable Module Switcher -->
+  <header class="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md sticky top-0 z-30">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div
+          class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center font-extrabold text-white text-base shadow-lg shadow-indigo-600/30">
+          ₹
+        </div>
+        <div>
+          <span class="text-base font-bold text-white tracking-tight">FinDependence <span
+              class="text-indigo-400">India</span></span>
+        </div>
+      </div>
+
+      <!-- Independent Module Navigation Tabs -->
+      <nav id="moduleNavTabs" class="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800">
+        <button type="button" id="navTabWealthLongevity" onclick="switchAppScreen('wealth_longevity')"
+          class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition bg-indigo-600 text-white shadow">
+          🔥 Can I Retire Today?
+        </button>
+        <button type="button" id="navTabExpenseAnalyzer" onclick="switchAppScreen('expense_analyzer')"
+          class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white">
+          🧾 Monthly Expense Analyzer (Bank Statement)
+        </button>
+      </nav>
+
+      <button id="headerRestartBtn" onclick="returnToWizard(1)"
+        class="hidden text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+        ← Edit Inputs
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+
+    <!-- ========================================================================= -->
+    <!-- SCREEN 1: RETIREMENT WEALTH LONGEVITY SIMULATOR (3-STEP WIZARD + RESULTS) -->
+    <!-- ========================================================================= -->
+    <div id="screenWealthLongevity">
+
+    <!-- ==================== PART 1: SIMPLE 3-STEP WIZARD ==================== -->
+    <section id="wizardContainer" class="max-w-2xl mx-auto">
+
+      <!-- Wizard Title -->
+      <div class="text-center mb-8">
+        <span
+          class="inline-block text-xs font-semibold uppercase tracking-wider text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full mb-2">
+          Simulator #1 • Financial Independence India (2006–2025 Market Data)
+        </span>
+        <h1 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+          Can I retire today? How long will my wealth last?
+        </h1>
+        <p class="text-sm text-slate-400 mt-1.5">
+          Answer 3 quick questions, then run random simulations using the last 20 years of historical Indian returns.
+        </p>
+      </div>
+
+      <!-- Step Progress Bar -->
+      <div class="grid grid-cols-3 gap-2 mb-6">
+        <button type="button" onclick="goToStep(1)" id="stepIndicator1"
+          class="text-left p-3 rounded-xl border transition border-indigo-500 bg-indigo-500/10">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-400 block">Step 1</span>
+          <span class="text-xs font-semibold text-white">Age & Health Cover</span>
+        </button>
+        <button type="button" onclick="goToStep(2)" id="stepIndicator2"
+          class="text-left p-3 rounded-xl border transition border-slate-800 bg-slate-900/60 hover:border-slate-700">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Step 2</span>
+          <span class="text-xs font-semibold text-slate-300">Corpus & Split</span>
+        </button>
+        <button type="button" onclick="goToStep(3)" id="stepIndicator3"
+          class="text-left p-3 rounded-xl border transition border-slate-800 bg-slate-900/60 hover:border-slate-700">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Step 3</span>
+          <span class="text-xs font-semibold text-slate-300">Expenses & Goals</span>
+        </button>
+      </div>
+
+      <!-- WIZARD CARD -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl">
+
+        <!-- STEP 1: AGE & MEDICAL INSURANCE COVERAGE -->
+        <div id="wizardStep1" class="fade-enter space-y-6">
+          <div>
+            <span class="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Step 1 of 3</span>
+            <h2 class="text-xl font-bold text-white mt-1">About You & Medical Insurance Coverage</h2>
+            <p class="text-xs text-slate-400 mt-1">We'll simulate how long your wealth lasts if you quit your job today.</p>
+          </div>
+
+          <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-6 text-center space-y-4">
+            <label for="ageInput" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">Your Current Age</label>
+            <div class="inline-flex items-baseline gap-2">
+              <input id="ageInput" type="number" min="18" max="85" value="38" oninput="updateAge(this.value)"
+                class="w-28 bg-transparent border-b-2 border-indigo-500 text-center text-5xl font-extrabold text-white focus:outline-none" />
+              <span class="text-lg font-semibold text-slate-400">years old</span>
+            </div>
+
+            <div class="pt-2 max-w-md mx-auto">
+              <input id="ageSlider" type="range" min="20" max="75" value="38" class="w-full"
+                oninput="updateAge(this.value)" />
+              <div class="flex justify-between text-[11px] text-slate-500 mt-1">
+                <span>20 yrs</span>
+                <span>35 yrs</span>
+                <span>50 yrs</span>
+                <span>65 yrs</span>
+                <span>75 yrs</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Medical Insurance Yes / No Question -->
+          <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <span class="text-sm font-bold text-white block">Do you have Medical Insurance coverage?</span>
+              <span id="medInsHintText" class="text-xs text-slate-400 block mt-0.5">
+                Having personal health cover shields your corpus from large uninsured hospitalization shocks.
+              </span>
+            </div>
+            <div class="inline-flex rounded-xl bg-slate-900 p-1 border border-slate-700 shrink-0">
+              <button type="button" id="btnMedInsYes" onclick="setMedicalInsurance(true)"
+                class="px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white shadow transition">
+                Yes
+              </button>
+              <button type="button" id="btnMedInsNo" onclick="setMedicalInsurance(false)"
+                class="px-4 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition">
+                No
+              </button>
+            </div>
+          </div>
+
+          <div class="flex justify-end pt-2">
+            <button type="button" onclick="goToStep(2)"
+              class="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition">
+              Next: Your Corpus & Split →
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 2: CORPUS & ASSET SPLIT -->
+        <div id="wizardStep2" class="hidden fade-enter space-y-6">
+          <div>
+            <span class="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Step 2 of 3</span>
+            <h2 class="text-xl font-bold text-white mt-1">What is your current corpus & asset split?</h2>
+            <p class="text-xs text-slate-400 mt-1">Enter your total savings and how it is divided across Equity, Fixed
+              Income, and Property.</p>
+          </div>
+
+          <!-- Total Corpus Input -->
+          <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <label for="corpusLakhsInput" class="text-sm font-semibold text-slate-200">Total Current Corpus</label>
+              <span id="corpusFormattedBadge"
+                class="text-lg font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-0.5 rounded-lg">
+                ₹3.50 Cr
+              </span>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <input id="corpusLakhsSlider" type="range" min="10" max="2000" step="5" value="350"
+                class="w-full slider-emerald" oninput="updateCorpusLakhs(this.value)" />
+              <div class="flex items-center bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 shrink-0">
+                <input id="corpusLakhsInput" type="number" min="1" max="50000" step="5" value="350"
+                  oninput="updateCorpusLakhs(this.value)"
+                  class="w-20 bg-transparent text-right text-sm font-bold text-white focus:outline-none" />
+                <span class="ml-1.5 text-xs font-semibold text-slate-400">Lakhs</span>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap gap-1.5 pt-1">
+              <button type="button" onclick="updateCorpusLakhs(50)"
+                class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">₹50 L</button>
+              <button type="button" onclick="updateCorpusLakhs(100)"
+                class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">₹1 Cr</button>
+              <button type="button" onclick="updateCorpusLakhs(250)"
+                class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">₹2.5 Cr</button>
+              <button type="button" onclick="updateCorpusLakhs(350)"
+                class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">₹3.5 Cr</button>
+              <button type="button" onclick="updateCorpusLakhs(500)"
+                class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">₹5 Cr</button>
+              <button type="button" onclick="updateCorpusLakhs(1000)"
+                class="px-2.5 py-1 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">₹10 Cr</button>
+            </div>
+          </div>
+
+          <!-- 3-Way Asset Split -->
+          <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-semibold text-slate-200">Split Across Asset Classes</span>
+              <span class="text-xs text-slate-400">Automatically totals 100%</span>
+            </div>
+
+            <!-- Visual Allocation Bar -->
+            <div class="w-full h-3.5 rounded-full overflow-hidden flex bg-slate-900 p-0.5 gap-0.5">
+              <div id="barEquity" class="h-full bg-indigo-500 rounded-l-full transition-all" style="width: 55%"></div>
+              <div id="barDebt" class="h-full bg-emerald-500 transition-all" style="width: 30%"></div>
+              <div id="barProp" class="h-full bg-amber-500 rounded-r-full transition-all" style="width: 15%"></div>
+            </div>
+
+            <!-- Equity -->
+            <div>
+              <div class="flex justify-between text-xs mb-1.5">
+                <span class="font-medium text-slate-200 flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                  Equity (Stocks, Mutual Funds, Nifty)
+                </span>
+                <span class="font-bold text-indigo-300">
+                  <span id="eqPctText">55</span>% (<span id="eqAmtText">₹1.93 Cr</span>)
+                </span>
+              </div>
+              <input id="eqSlider" type="range" min="0" max="100" value="55" class="w-full"
+                oninput="updateSplit('equity', this.value)" />
+            </div>
+
+            <!-- Fixed Income -->
+            <div>
+              <div class="flex justify-between text-xs mb-1.5">
+                <span class="font-medium text-slate-200 flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                  Fixed Income (FD, EPF, PPF, Debt Funds)
+                </span>
+                <span class="font-bold text-emerald-300">
+                  <span id="fiPctText">30</span>% (<span id="fiAmtText">₹1.05 Cr</span>)
+                </span>
+              </div>
+              <input id="fiSlider" type="range" min="0" max="100" value="30" class="w-full slider-emerald"
+                oninput="updateSplit('fixed_income', this.value)" />
+            </div>
+
+            <!-- Property -->
+            <div>
+              <div class="flex justify-between text-xs mb-1.5">
+                <span class="font-medium text-slate-200 flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                  Property / Real Estate
+                </span>
+                <span class="font-bold text-amber-300">
+                  <span id="propPctText">15</span>% (<span id="propAmtText">₹52.50 L</span>)
+                </span>
+              </div>
+              <input id="propSlider" type="range" min="0" max="100" value="15" class="w-full slider-amber"
+                oninput="updateSplit('property', this.value)" />
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between pt-2">
+            <button type="button" onclick="goToStep(1)"
+              class="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition">
+              ← Back
+            </button>
+            <button type="button" onclick="goToStep(3)"
+              class="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition">
+              Next: Your Expenses →
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 3: EXPENSES, OPTIONAL ADVANCED CONFIG & SIMULATE BUTTON -->
+        <div id="wizardStep3" class="hidden fade-enter space-y-6">
+          <div>
+            <span class="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Step 3 of 3</span>
+            <h2 class="text-xl font-bold text-white mt-1">What are your living expenses?</h2>
+            <p class="text-xs text-slate-400 mt-1">Enter your monthly or annual household spend. You can also tweak
+              advanced settings below before running.</p>
+          </div>
+
+          <!-- Expenses Box -->
+          <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <div class="inline-flex rounded-xl bg-slate-900 p-1 border border-slate-800">
+                <button type="button" id="btnFreqMonthly" onclick="switchExpenseFreq('monthly')"
+                  class="px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white transition">
+                  Monthly Expense
+                </button>
+                <button type="button" id="btnFreqAnnual" onclick="switchExpenseFreq('annual')"
+                  class="px-3 py-1 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition">
+                  Annual Expense
+                </button>
+              </div>
+              <span id="expenseSummaryBadge" class="text-sm font-extrabold text-amber-300">
+                ₹1.00 L/mo (₹12.00 L/yr)
+              </span>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <input id="expenseSlider" type="range" min="15000" max="500000" step="5000" value="100000"
+                class="w-full slider-amber" oninput="updateExpense(this.value)" />
+              <div class="flex items-center bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 shrink-0">
+                <span class="text-xs text-slate-400 mr-1">₹</span>
+                <input id="expenseInput" type="number" min="5000" max="50000000" step="5000" value="100000"
+                  oninput="updateExpense(this.value)"
+                  class="w-24 bg-transparent text-right text-sm font-bold text-white focus:outline-none" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Known Future Expenses by Year (at Today's ₹, Tagged by Event) -->
+          <div class="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <label class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <span>🎯 Known Future Expenses (at Today's ₹ Value, Tagged by Event)</span>
+                </label>
+                <p class="text-[11px] text-slate-400">
+                  Configure planned future expenses by year at today's value (automatically adjusted for inflation over time).
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <button type="button" onclick="addPresetKnownExpense('Higher Education', 8, 25)"
+                  class="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] text-indigo-300 transition">
+                  + 🎓 Education (Yr 8, ₹25L)
+                </button>
+                <button type="button" onclick="addPresetKnownExpense('Marriage', 14, 35)"
+                  class="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] text-amber-300 transition">
+                  + 💍 Marriage (Yr 14, ₹35L)
+                </button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+              <div class="sm:col-span-5">
+                <label class="block text-[10px] text-slate-400 mb-1">Event Tag (e.g. Marriage, Education)</label>
+                <input id="newKnownTag" type="text" placeholder="e.g. Child Education / Marriage" value="Higher Education"
+                  class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500" />
+              </div>
+              <div class="sm:col-span-3">
+                <label class="block text-[10px] text-slate-400 mb-1">Years From Now</label>
+                <input id="newKnownYears" type="number" min="1" max="60" value="8"
+                  class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500" />
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-[10px] text-slate-400 mb-1">Today's ₹ (Lakhs)</label>
+                <input id="newKnownLakhs" type="number" min="0.5" max="10000" step="0.5" value="25"
+                  class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500" />
+              </div>
+              <div class="sm:col-span-2">
+                <button type="button" onclick="addKnownExpenseFromInputs()"
+                  class="w-full py-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white transition">
+                  + Add Event
+                </button>
+              </div>
+            </div>
+
+            <div id="knownExpensesList" class="flex flex-wrap gap-2 pt-1"></div>
+          </div>
+
+          <!-- Collapsible Advanced Configuration -->
+          <div class="bg-slate-950/60 border border-slate-800/90 rounded-2xl overflow-hidden">
+            <button type="button" onclick="toggleAdvancedDrawer()"
+              class="w-full px-5 py-3.5 flex items-center justify-between text-left hover:bg-slate-900/60 transition">
+              <div>
+                <span class="text-xs font-bold text-slate-200 flex items-center gap-2">
+                  <span>⚙️ Advanced Configuration (Taxes, Rebalancing, Home Improvement & Random Shocks)</span>
+                </span>
+                <span class="text-[11px] text-slate-400">
+                  Debt Tax (<span id="advSummaryFiTax">30.0%</span>), Equity Tax (<span id="advSummaryEqTax">12.5%</span>),
+                  Rebalance (<span id="advSummaryRebal">Every 2 yrs</span>), Inflation (<span id="advSummaryInf">6.0%</span>),
+                  Lifestyle (<span id="advSummaryLife">+0.5%</span>)
+                </span>
+              </div>
+              <svg id="advArrow" class="w-4 h-4 text-slate-400 transition-transform duration-200" fill="none"
+                stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            <div id="advancedDrawer" class="hidden px-5 pb-5 pt-3 border-t border-slate-800/80 space-y-5">
+              <!-- Section A: Inflation & Horizon -->
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <!-- Inflation Rate -->
+                <div>
+                  <div class="flex justify-between text-xs mb-1">
+                    <label class="text-slate-300">Base CPI Inflation (% p.a.)</label>
+                    <span class="font-bold text-white"><span id="infValText">6.0</span>%</span>
+                  </div>
+                  <input id="infSlider" type="range" min="3.0" max="12.0" step="0.5" value="6.0" class="w-full"
+                    oninput="updateAdvSettings()" />
+                </div>
+
+                <!-- Lifestyle Inflation -->
+                <div>
+                  <div class="flex justify-between text-xs mb-1">
+                    <label class="text-slate-300">Lifestyle Inflation (% p.a.)</label>
+                    <span class="font-bold text-amber-300">+<span id="lifeInfValText">0.5</span>%</span>
+                  </div>
+                  <input id="lifeInfSlider" type="range" min="0.0" max="5.0" step="0.25" value="0.5"
+                    class="w-full slider-amber" oninput="updateAdvSettings()" />
+                </div>
+
+                <!-- Target Planning Age -->
+                <div>
+                  <div class="flex justify-between text-xs mb-1">
+                    <label class="text-slate-300">Target Planning Age</label>
+                    <span class="font-bold text-white"><span id="targetAgeValText">90</span> yrs</span>
+                  </div>
+                  <input id="targetAgeSlider" type="range" min="65" max="105" step="1" value="90" class="w-full"
+                    oninput="updateAdvSettings()" />
+                </div>
+              </div>
+
+              <!-- Section B: Withdrawal Order, Tax Rates & Periodic Rebalancing -->
+              <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-3.5 space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span class="text-xs font-bold text-indigo-300">💰 Withdrawal Taxation & Periodic Rebalancing</span>
+                    <p class="text-[11px] text-slate-400">
+                      Annual withdrawals are always drawn from <strong>Fixed Income first</strong> (then Equity if Fixed Income is depleted). Rebalancing triggers capital gains tax on the sold asset.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+                  <!-- Fixed Income Tax Rate (Default 30%) -->
+                  <div>
+                    <div class="flex justify-between text-xs mb-1">
+                      <label class="text-slate-300">Fixed Income Tax Rate</label>
+                      <span class="font-bold text-amber-300"><span id="fiTaxValText">30.0</span>%</span>
+                    </div>
+                    <input id="fiTaxSlider" type="range" min="0.0" max="45.0" step="0.5" value="30.0"
+                      class="w-full slider-amber" oninput="updateAdvSettings()" />
+                  </div>
+
+                  <!-- Equity Tax Rate (Default 12.5%) -->
+                  <div>
+                    <div class="flex justify-between text-xs mb-1">
+                      <label class="text-slate-300">Equity Tax Rate (LTCG)</label>
+                      <span class="font-bold text-emerald-300"><span id="eqTaxValText">12.5</span>%</span>
+                    </div>
+                    <input id="eqTaxSlider" type="range" min="0.0" max="35.0" step="0.5" value="12.5"
+                      class="w-full slider-emerald" oninput="updateAdvSettings()" />
+                  </div>
+
+                  <!-- Periodic Rebalancing (Default every 2 years) -->
+                  <div>
+                    <div class="flex items-center justify-between text-xs mb-1">
+                      <label class="flex items-center gap-1.5 text-slate-200 cursor-pointer">
+                        <input id="rebalanceEnabledChk" type="checkbox" checked onchange="updateAdvSettings()"
+                          class="rounded bg-slate-900 border-slate-700 text-indigo-600" />
+                        <span>Rebalance Every</span>
+                      </label>
+                      <span class="font-bold text-indigo-300"><span id="rebalanceFreqText">2</span> yrs</span>
+                    </div>
+                    <input id="rebalanceFreqSlider" type="range" min="1" max="10" step="1" value="2"
+                      class="w-full" oninput="updateAdvSettings()" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section C: Home Improvement & Random Annual Shock Expenses -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <!-- Home Improvement Configuration -->
+                <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+                  <label class="flex items-center justify-between cursor-pointer">
+                    <span class="text-xs font-bold text-emerald-300">🏠 Periodic Home Improvement</span>
+                    <input id="homeImpEnabledChk" type="checkbox" checked onchange="updateAdvSettings()"
+                      class="rounded bg-slate-900 border-slate-700 text-emerald-500" />
+                  </label>
+                  <p class="text-[11px] text-slate-400">
+                    Spend a % of current property value (± variance %) every X years.
+                  </p>
+                  <div class="grid grid-cols-3 gap-2 pt-1">
+                    <div>
+                      <label class="block text-[10px] text-slate-400 mb-1">% of Property</label>
+                      <input id="homeImpPctInput" type="number" min="0" max="50" step="0.5" value="3.0"
+                        oninput="updateAdvSettings()"
+                        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white" />
+                    </div>
+                    <div>
+                      <label class="block text-[10px] text-slate-400 mb-1">± Variance (%)</label>
+                      <input id="homeImpVarInput" type="number" min="0" max="50" step="0.5" value="1.0"
+                        oninput="updateAdvSettings()"
+                        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white" />
+                    </div>
+                    <div>
+                      <label class="block text-[10px] text-slate-400 mb-1">Every X Years</label>
+                      <input id="homeImpIntervalInput" type="number" min="1" max="30" step="1" value="5"
+                        oninput="updateAdvSettings()"
+                        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Random Annual Expense (Shock) Configuration -->
+                <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+                  <label class="flex items-center justify-between cursor-pointer">
+                    <span class="text-xs font-bold text-amber-300">⚡ Random Annual Expense (Shock)</span>
+                    <input id="randExpEnabledChk" type="checkbox" checked onchange="updateAdvSettings()"
+                      class="rounded bg-slate-900 border-slate-700 text-amber-500" />
+                  </label>
+                  <p class="text-[11px] text-slate-400">
+                    Unplanned expense at today's ₹ (± variance %), adjusted for inflation over time.
+                  </p>
+                  <div class="grid grid-cols-3 gap-2 pt-1">
+                    <div>
+                      <label class="block text-[10px] text-slate-400 mb-1">Today's ₹ (Lakhs)</label>
+                      <input id="randExpBaseLakhsInput" type="number" min="0" max="500" step="0.5" value="2.0"
+                        oninput="updateAdvSettings()"
+                        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white" />
+                    </div>
+                    <div>
+                      <label class="block text-[10px] text-slate-400 mb-1">± Variance (%)</label>
+                      <input id="randExpVarInput" type="number" min="0" max="100" step="5" value="25"
+                        oninput="updateAdvSettings()"
+                        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white" />
+                    </div>
+                    <div>
+                      <label class="block text-[10px] text-slate-400 mb-1">Annual Prob (%)</label>
+                      <input id="randExpProbInput" type="number" min="0" max="100" step="1" value="15"
+                        oninput="updateAdvSettings()"
+                        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <div>
+                  <label class="block text-[11px] text-slate-400 mb-1">Property Treatment</label>
+                  <select id="propModeSelect" onchange="updateAdvSettings()"
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white">
+                    <option value="liquidate_fallback" selected>Rent + Liquidate if Needed</option>
+                    <option value="illiquid_with_rent">Never Sell (Use Rent Only)</option>
+                    <option value="illiquid_excluded">Primary Home (Excluded)</option>
+                    <option value="rebalanced">Rebalanced Real Estate</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-[11px] text-slate-400 mb-1">Historical Return Sampling (Last 20 Yrs)</label>
+                  <select id="samplingSelect" onchange="updateAdvSettings()"
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white">
+                    <option value="iid_bootstrap" selected>Random Year Draw (2006–2025)</option>
+                    <option value="block_bootstrap">3-Year Historical Blocks (2006–2025)</option>
+                    <option value="parametric_correlated">Correlated Normal Curve (2006–2025)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-[11px] text-slate-400 mb-1">Number of Random Runs</label>
+                  <select id="numSimsSelect" onchange="updateAdvSettings()"
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white">
+                    <option value="500">500 Simulations</option>
+                    <option value="1000" selected>1,000 Simulations</option>
+                    <option value="2500">2,500 Simulations</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Buttons: Back + Big Run Simulation Button -->
+          <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+            <button type="button" onclick="goToStep(2)"
+              class="w-full sm:w-auto px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition">
+              ← Back
+            </button>
+
+            <button type="button" id="btnRunSimulation" onclick="triggerSimulationRun()"
+              class="w-full sm:w-auto flex-1 py-3.5 px-6 rounded-xl bg-gradient-to-r from-indigo-600 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white font-extrabold text-sm shadow-xl shadow-indigo-600/30 transition flex items-center justify-center gap-2">
+              <span>🎲 Run Random Historical Simulations</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ==================== SIMULATION PROGRESS OVERLAY ==================== -->
+    <section id="simulationProgressBox"
+      class="hidden max-w-xl mx-auto my-12 bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center space-y-5 shadow-2xl">
+      <div class="w-12 h-12 mx-auto rounded-full border-4 border-indigo-500 border-t-transparent animate-spin"></div>
+      <div>
+        <h3 class="text-lg font-bold text-white" id="simProgressTitle">Sampling Last 20 Years of Indian Market Returns
+          (2006–2025)...</h3>
+        <p class="text-xs text-slate-400 mt-1" id="simProgressSubtitle">
+          Randomly drawing future sequences of Nifty Equity, Fixed Income, CPI Inflation, Rebalancing & Expenses...
+        </p>
+      </div>
+      <div class="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-800">
+        <div id="simProgressBar"
+          class="bg-gradient-to-r from-indigo-500 to-emerald-400 h-full transition-all duration-150" style="width: 15%">
+        </div>
+      </div>
+      <div id="simTickerYears"
+        class="text-xs font-mono text-indigo-300 bg-slate-950/90 py-2 px-3 rounded-lg border border-slate-800">
+        Drawing random historical years: 2008 → 2014 → 2020 → 2011 → 2023...
+      </div>
+    </section>
+
+    <!-- ==================== PART 2: VISUAL SIMULATION RESULTS ==================== -->
+    <section id="resultsContainer" class="hidden fade-enter space-y-6">
+
+      <!-- Top Control Bar: Summary of Inputs + Re-Run New Random Sample Button -->
+      <div
+        class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+          <span class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 font-semibold" id="summaryPillAge">Age
+            38</span>
+          <span class="px-2.5 py-1 rounded-lg bg-slate-800 text-emerald-300 font-semibold" id="summaryPillCorpus">₹3.50
+            Cr</span>
+          <span class="px-2.5 py-1 rounded-lg bg-slate-800 text-indigo-300 font-semibold" id="summaryPillSplit">55% Eq /
+            30% Debt / 15% Prop</span>
+          <span class="px-2.5 py-1 rounded-lg bg-slate-800 text-amber-300 font-semibold" id="summaryPillExpense">₹1.00
+            L/mo</span>
+          <span class="px-2.5 py-1 rounded-lg bg-slate-800 text-teal-300 font-semibold" id="summaryPillMedIns">🏥 Med Ins: Yes</span>
+          <span
+            class="px-2.5 py-1 rounded-lg bg-indigo-950 text-indigo-300 border border-indigo-500/30 font-mono text-[11px]"
+            id="summaryPillSeed">
+            Batch Seed: #--
+          </span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="returnToWizard(1)"
+            class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition">
+            ✏️ Change Inputs
+          </button>
+          <button type="button" onclick="triggerSimulationRun()"
+            class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white shadow-lg shadow-indigo-600/25 transition flex items-center gap-1.5">
+            <span>🎲 Run Again (New Random Sample)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Hero Outcome Banner -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <span id="resVerdictBadge"
+            class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+            Outcome
+          </span>
+          <span id="resSimCountLabel" class="text-xs text-slate-400">
+            Based on 1,000 random future simulations (2006–2025 market regime)
+          </span>
+        </div>
+
+        <h2 id="resHeadline" class="text-xl sm:text-2xl font-extrabold text-white mt-1">
+          --
+        </h2>
+        <p id="resRecommendation" class="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed">
+          --
+        </p>
+
+        <!-- Percentile Cards: Only Unlucky 10th Percentile (P10) and Median Outcome (P50) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+          <div class="bg-rose-950/30 border border-rose-500/40 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <span class="text-xs font-bold uppercase tracking-wider text-rose-300 block">Unlucky 10th Percentile (P10)</span>
+              <span class="text-xs text-slate-400 block mt-0.5">If you face early market crashes / high inflation</span>
+            </div>
+            <div class="text-right">
+              <span id="cardP10Yrs" class="text-2xl sm:text-3xl font-extrabold text-white block">-- yrs</span>
+              <span id="cardP10Age" class="text-xs text-rose-300 font-semibold">Until Age --</span>
+            </div>
+          </div>
+
+          <div class="bg-indigo-950/50 border-2 border-indigo-500 rounded-xl p-4 shadow-lg shadow-indigo-500/10 flex items-center justify-between">
+            <div>
+              <span class="text-xs font-bold uppercase tracking-wider text-indigo-300 block">Median Outcome (P50)</span>
+              <span class="text-xs text-slate-400 block mt-0.5">Typical market cycle (50% of runs last longer)</span>
+            </div>
+            <div class="text-right">
+              <span id="cardP50Yrs" class="text-2xl sm:text-3xl font-extrabold text-white block">-- yrs</span>
+              <span id="cardP50Age" class="text-xs text-indigo-300 font-semibold">Until Age --</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CHART 1: SIMULATED FUTURE WEALTH — MEDIAN (P50) & 10TH PERCENTILE (P10) -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="text-base font-bold text-white">Simulated Future Wealth: Median (P50) vs. 10th Percentile (P10)
+            </h3>
+            <p class="text-xs text-slate-400">
+              Annotated with 🎯 Tagged Known Expenses, 🏠 Home Improvements, ⚡ Random Shocks & ⚖️ Taxable Rebalancing.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Curve Focus Selector -->
+            <div class="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800">
+              <button type="button" id="btnFocusBoth" onclick="setCurveFocus('both')"
+                class="px-2.5 py-1 text-xs font-semibold rounded-md bg-indigo-600 text-white">
+                Both
+              </button>
+              <button type="button" id="btnFocusP50" onclick="setCurveFocus('p50')"
+                class="px-2.5 py-1 text-xs font-semibold rounded-md text-slate-400 hover:text-white">
+                Median Only
+              </button>
+              <button type="button" id="btnFocusP10" onclick="setCurveFocus('p10')"
+                class="px-2.5 py-1 text-xs font-semibold rounded-md text-slate-400 hover:text-white">
+                10th Percentile Only
+              </button>
+            </div>
+
+            <div class="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800">
+              <button type="button" id="btnScaleReal" onclick="switchChartScale('real')"
+                class="px-2.5 py-1 text-xs font-semibold rounded-md bg-indigo-600 text-white">
+                Today's ₹ (Real)
+              </button>
+              <button type="button" id="btnScaleNom" onclick="switchChartScale('nominal')"
+                class="px-2.5 py-1 text-xs font-semibold rounded-md text-slate-400 hover:text-white">
+                Nominal ₹
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Event & Rebalance Legend Strip on Chart -->
+        <div id="chartEventsStrip" class="flex flex-wrap items-center gap-2 text-[11px]"></div>
+
+        <div class="chart-box">
+          <canvas id="spaghettiChart"></canvas>
+        </div>
+      </div>
+
+      <!-- ROW 2: LONGEVITY DISTRIBUTION HISTOGRAM & SURVIVAL PROBABILITY -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <h3 class="text-sm font-bold text-white">How Many Years Did the Corpus Last?</h3>
+          <p class="text-xs text-slate-400 mb-3">Distribution of outcomes across all random simulation runs</p>
+          <div class="chart-box-sm">
+            <canvas id="histogramChart"></canvas>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <h3 class="text-sm font-bold text-white">Probability of Wealth Surviving by Age</h3>
+          <p class="text-xs text-slate-400 mb-3">% of random simulations where your corpus is still positive at each age
+          </p>
+          <div class="chart-box-sm">
+            <canvas id="survivalChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- INTERACTIVE RANDOM RUN INSPECTOR: SEE EXACT SAMPLED HISTORICAL YEARS -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-bold text-white">🔍 Inspect an Individual Simulation Run (Year-by-Year Breakdown)
+            </h3>
+            <p class="text-xs text-slate-400">
+              Shows sampled Indian market year (2006–2025), CPI inflation, lifestyle inflation, tagged events/shocks, Debt-first withdrawals with tax, and periodic rebalance activity
+            </p>
+          </div>
+          <select id="notableRunSelect" onchange="renderRunInspectorTable()"
+            class="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-white">
+          </select>
+        </div>
+
+        <div class="max-h-96 overflow-x-auto overflow-y-auto border border-slate-800 rounded-xl">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-950 text-slate-400 sticky top-0">
+              <tr>
+                <th class="py-2.5 px-3">Sim Year (Age)</th>
+                <th class="py-2.5 px-3">Drawn India Year</th>
+                <th class="py-2.5 px-3">Equity / Debt Return</th>
+                <th class="py-2.5 px-3">CPI Inflation</th>
+                <th class="py-2.5 px-3">Lifestyle Inflation</th>
+                <th class="py-2.5 px-3">Special Events (Goals / Home / Shock)</th>
+                <th class="py-2.5 px-3">Annual Withdrawal & Source</th>
+                <th class="py-2.5 px-3">Rebalance Activity (with Tax)</th>
+                <th class="py-2.5 px-3">Ending Corpus (Today's ₹)</th>
+              </tr>
+            </thead>
+            <tbody id="runInspectorTableBody" class="divide-y divide-slate-800/70"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+    </div><!-- End #screenWealthLongevity -->
+
+    <!-- ========================================================================= -->
+    <!-- SCREEN 2: MONTHLY EXPENSE ANALYZER (BANK STATEMENT + SYSTEM 1 CLASSIFIER) -->
+    <!-- ========================================================================= -->
+    <div id="screenExpenseAnalyzer" class="hidden fade-enter space-y-6">
+
+      <!-- Title & Intro -->
+      <div class="text-center max-w-2xl mx-auto">
+        <span class="inline-block text-xs font-semibold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full mb-2">
+          Module #2 • Runtime Format Discovery + System 1 Decision Model
+        </span>
+        <h1 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+          Discover Your Monthly Expenses & Category Breakdown
+        </h1>
+        <p class="text-sm text-slate-400 mt-1.5">
+          Upload your bank statement as an Excel (<code class="text-slate-300">.xlsx</code> / <code class="text-slate-300">.xls</code>) or Spreadsheet (<code class="text-slate-300">.csv</code> / <code class="text-slate-300">.tsv</code>) file. We auto-discover the columns at runtime and classify each line using a fast System 1 decision model.
+        </p>
+      </div>
+
+      <!-- Upload & Configuration Card -->
+      <div class="max-w-3xl mx-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-5">
+
+        <!-- Drag & Drop Zone -->
+        <label for="statementFileInput" id="dropZoneLabel"
+          class="flex flex-col items-center justify-center border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-2xl p-8 cursor-pointer bg-slate-950/60 hover:bg-slate-950 transition text-center">
+          <div class="w-12 h-12 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-2xl mb-3">
+            📄
+          </div>
+          <span class="text-sm font-bold text-white" id="selectedFileLabel">
+            Click to choose a Bank Statement or drag & drop here
+          </span>
+          <span class="text-xs text-slate-400 mt-1">
+            Supports standard spreadsheet and bank statement formats (<code>.xlsx</code>, <code>.xls</code>, <code>.csv</code>, <code>.tsv</code>)
+          </span>
+          <input id="statementFileInput" type="file" accept=".xlsx,.xls,.csv,.tsv" class="hidden"
+            onchange="handleStatementFileSelected(this)" />
+        </label>
+
+        <!-- Expense Calculation Options -->
+        <div class="flex flex-wrap items-center justify-between gap-4 pt-1">
+          <div class="flex flex-wrap items-center gap-4 text-xs text-slate-300">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input id="chkIncludeEmis" type="checkbox" checked onchange="reRunCurrentStatementIfLoaded()"
+                class="rounded bg-slate-950 border-slate-700 text-indigo-600" />
+              <span>Include Loan EMIs in Monthly Expenses</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input id="chkIncludeInvestments" type="checkbox" onchange="reRunCurrentStatementIfLoaded()"
+                class="rounded bg-slate-950 border-slate-700 text-indigo-600" />
+              <span>Include Mutual Fund SIPs / Investments</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="expenseUploadError" class="hidden text-xs font-semibold text-rose-300 bg-rose-950/50 border border-rose-500/40 rounded-xl p-3"></div>
+      </div>
+
+      <!-- EXPENSE ANALYSIS RESULTS CONTAINER -->
+      <div id="expenseResultsContainer" class="hidden fade-enter space-y-6">
+
+        <!-- Runtime Schema Discovery Banner -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="px-2.5 py-1 rounded-lg bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 text-xs font-bold">
+              🔍 Runtime Format Discovered
+            </span>
+            <span id="schemaDiscoveryText" class="text-xs text-slate-300">
+              --
+            </span>
+          </div>
+          <span id="schemaRowsSummary" class="text-xs font-mono text-slate-400">
+            --
+          </span>
+        </div>
+
+        <!-- Hero Monthly Expense Summary Tiles -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="bg-gradient-to-br from-indigo-950/80 to-slate-900 border-2 border-indigo-500/60 rounded-2xl p-5 shadow-xl">
+            <span class="text-xs font-bold uppercase tracking-wider text-indigo-300 block">
+              Estimated Monthly Living Expense
+            </span>
+            <span id="expTileMonthly" class="text-3xl font-extrabold text-white mt-1.5 block">
+              ₹--
+            </span>
+            <span id="expTileAnnual" class="text-xs text-slate-300 mt-1 block">
+              Annualized: ₹-- / yr
+            </span>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <span class="text-xs font-bold uppercase tracking-wider text-emerald-400 block">
+              Statement Period & Coverage
+            </span>
+            <span id="expTileMonthsCount" class="text-2xl font-extrabold text-white mt-1.5 block">
+              -- Months
+            </span>
+            <span id="expTileTotalPeriod" class="text-xs text-slate-400 mt-1 block">
+              Total living spend in statement: ₹--
+            </span>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <span class="text-xs font-bold uppercase tracking-wider text-amber-400 block">
+              Investments / SIPs Detected
+            </span>
+            <span id="expTileInvestments" class="text-2xl font-extrabold text-white mt-1.5 block">
+              ₹-- / mo
+            </span>
+            <span class="text-xs text-slate-400 mt-1 block">
+              Separated from living expense burn by System 1
+            </span>
+          </div>
+        </div>
+
+        <!-- Visual Charts Row: Category Breakdown Bar + Monthly Trend -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <h3 class="text-sm font-bold text-white">Average Monthly Expense by Category</h3>
+            <p class="text-xs text-slate-400 mb-3">Classified automatically by the System 1 decision model</p>
+            <div class="chart-box-sm">
+              <canvas id="expenseCategoryChart"></canvas>
+            </div>
+          </div>
+
+          <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <h3 class="text-sm font-bold text-white">Month-by-Month Living Expense Trend</h3>
+            <p class="text-xs text-slate-400 mb-3">Total household living spend per calendar month</p>
+            <div class="chart-box-sm">
+              <canvas id="expenseMonthlyTrendChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Category Breakdown Tiles -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-sm font-bold text-white">Monthly Expense Breakdown by Category</h3>
+              <p class="text-xs text-slate-400">Click any category card to filter the transaction lines below</p>
+            </div>
+            <button type="button" onclick="filterTransactionsByCategory('all')"
+              class="text-xs font-semibold text-indigo-400 hover:text-indigo-300">
+              Show All Categories
+            </button>
+          </div>
+          <div id="expenseCategoryCardsGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3"></div>
+        </div>
+
+        <!-- Classified Line-by-Line Bank Statement Table -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 class="text-sm font-bold text-white">🧠 System 1 Line-by-Line Transaction Classification</h3>
+              <p class="text-xs text-slate-400">
+                Shows every debit line discovered in your statement, the assigned category, and the System 1 associative cue triggered
+              </p>
+            </div>
+            <select id="txnCategoryFilterSelect" onchange="filterTransactionsByCategory(this.value)"
+              class="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-white">
+              <option value="all">All Categories</option>
+            </select>
+          </div>
+
+          <div class="max-h-96 overflow-y-auto border border-slate-800 rounded-xl">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-950 text-slate-400 sticky top-0">
+                <tr>
+                  <th class="py-2.5 px-3">Date</th>
+                  <th class="py-2.5 px-3">Bank Narration / Description</th>
+                  <th class="py-2.5 px-3 text-right">Amount</th>
+                  <th class="py-2.5 px-3">System 1 Category</th>
+                  <th class="py-2.5 px-3">Matched Associative Cue (Confidence)</th>
+                </tr>
+              </thead>
+              <tbody id="expenseTransactionsTableBody" class="divide-y divide-slate-800/70"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- End #screenExpenseAnalyzer -->
+
+  </main>
+
+  <script src="/static/js/app.js"></script>
+</body>
+
+</html>
