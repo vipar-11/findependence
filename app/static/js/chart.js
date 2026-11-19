@@ -558,4 +558,7 @@
   }
 
   global.Chart = LocalChart;
-})(window);
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { LocalChart, Chart: LocalChart };
+  }
+})(typeof window !== 'undefined' ? window : globalThis);

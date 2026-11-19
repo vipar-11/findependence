@@ -1223,3 +1223,46 @@ window.addEventListener('DOMContentLoaded', () => {
   setupDropZone();
   syncActiveModulesNav();
 });
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    state,
+    charts,
+    expenseState,
+    formatInrCompact,
+    goToStep,
+    returnToWizard,
+    updateAge,
+    setMedicalInsurance,
+    updateCorpusLakhs,
+    updateSplit,
+    renderSplitUI,
+    switchExpenseFreq,
+    updateExpense,
+    renderKnownExpensesList,
+    addKnownExpenseFromInputs,
+    addPresetKnownExpense,
+    removeKnownExpense,
+    toggleAdvancedDrawer,
+    updateAdvSettings,
+    triggerSimulationRun,
+    renderSimulationResults,
+    setCurveFocus,
+    switchChartScale,
+    renderSpaghettiAndPercentileChart,
+    renderHistogramChart,
+    renderSurvivalChart,
+    populateNotableRunsDropdown,
+    renderRunInspectorTable,
+    switchAppScreen,
+    syncActiveModulesNav,
+    setupDropZone,
+    handleStatementFileSelected,
+    reRunCurrentStatementIfLoaded,
+    uploadAndAnalyzeStatementFile,
+    renderExpenseAnalysisResults,
+    renderExpenseCategoryChart,
+    renderExpenseMonthlyTrendChart,
+    filterTransactionsByCategory,
+  };
+}

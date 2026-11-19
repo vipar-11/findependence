@@ -371,3 +371,425 @@ def test_self_contained_static_css_and_js_no_external_cdns() -> None:
     assert "LocalChart" in r_chart.text
 
 
+def test_complete_api_routes_and_error_branches(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    from finlib.core.engine import registry
+
+    # 1. List simulators & market data endpoints
+    r_mods = client.get("/api/v1/modules?include_retired=true")
+    assert r_mods.status_code == 200
+    assert "simulators" in r_mods.json()
+
+    r_mkt = client.get("/api/v1/market-data/india")
+    assert r_mkt.status_code == 200
+    assert r_mkt.json()["num_years"] == 20
+
+    # 2. Retire and activate module routes (valid & 404 invalid)
+    r_ret_404 = client.post("/api/v1/modules/unknown_mod/retire")
+    assert r_ret_404.status_code == 404
+    r_act_404 = client.post("/api/v1/modules/unknown_mod/activate")
+    assert r_act_404.status_code == 404
+
+    r_ret = client.post("/api/v1/modules/wealth_longevity/retire")
+    assert r_ret.status_code == 200
+    assert r_ret.json()["status"] == "retired"
+
+    # Running retired wealth_longevity returns 404
+    r_wl_404 = client.post("/api/v1/simulators/wealth-longevity/run", json={})
+    assert r_wl_404.status_code == 404
+    r_gen_404 = client.post("/api/v1/simulators/wealth_longevity/run", json={"params": {}})
+    assert r_gen_404.status_code == 404
+
+    # Re-activate wealth_longevity
+    r_act = client.post("/api/v1/modules/wealth_longevity/activate")
+    assert r_act.status_code == 200
+    assert r_act.json()["status"] == "active"
+
+    # Generic simulator run for wealth_longevity & expense_analyzer
+    r_gen_wl = client.post(
+        "/api/v1/simulators/wealth_longevity/run",
+        json={"params": {"current_age": 40, "life_expectancy": 85, "num_simulations": 100}},
+    )
+    assert r_gen_wl.status_code == 200
+
+    r_gen_exp = client.post(
+        "/api/v1/simulators/expense_analyzer/run",
+        json={
+            "params": {
+                "raw_rows": [
+                    ["Date", "Narration", "Debit"],
+                    ["2026-09-01", "UPI/GROCERY SUPERMARKET", "1500"],
+                ]
+            }
+        },
+    )
+    assert r_gen_exp.status_code == 200
+
+    # 3. Upload error branches (retired analyzer, empty file, no debits, corrupt xlsx, wrong analyzer instance)
+    client.post("/api/v1/modules/expense_analyzer/retire")
+    r_up_ret = client.post(
+        "/api/v1/analyzers/expense-analyzer/upload",
+        files={"file": ("s.csv", io.BytesIO(b"a,b\n1,2"), "text/csv")},
+    )
+    assert r_up_ret.status_code == 404
+    client.post("/api/v1/modules/expense_analyzer/activate")
+
+    r_up_empty = client.post(
+        "/api/v1/analyzers/expense-analyzer/upload",
+        files={"file": ("empty.csv", io.BytesIO(b""), "text/csv")},
+    )
+    assert r_up_empty.status_code == 400
+
+    r_up_nodebits = client.post(
+        "/api/v1/analyzers/expense-analyzer/upload",
+        files={
+            "file": (
+                "credits.csv",
+                io.BytesIO(b"Date,Narration,Credit\n01/09/2026,NEFT SALARY CREDIT,100000\n"),
+                "text/csv",
+            )
+        },
+    )
+    assert r_up_nodebits.status_code == 422
+
+    r_up_corrupt = client.post(
+        "/api/v1/analyzers/expense-analyzer/upload",
+        files={"file": ("bad.xlsx", io.BytesIO(b"not-a-zip"), "application/octet-stream")},
+    )
+    assert r_up_corrupt.status_code == 400
+
+    # Wrong analyzer instance registered
+    orig_analyzer = registry.get("expense_analyzer")
+    monkeypatch.setitem(registry._modules, "expense_analyzer", registry.get("wealth_longevity"))
+    r_up_wrong = client.post(
+        "/api/v1/analyzers/expense-analyzer/upload",
+        files={"file": ("s.csv", io.BytesIO(b"a,b\n1,2"), "text/csv")},
+    )
+    assert r_up_wrong.status_code == 500
+    monkeypatch.setitem(registry._modules, "expense_analyzer", orig_analyzer)
+
+    # Missing index.html -> 404
+    import app.main as main_mod
+
+    monkeypatch.setattr(main_mod, "STATIC_DIR", tmp_path)
+    r_no_idx = client.get("/")
+    assert r_no_idx.status_code == 404
+
+
+def test_schemas_and_engine_edge_cases() -> None:
+    from app.schemas import WealthLongevityRequest
+    from finlib.core.engine import (
+        generate_historical_backtest_paths,
+        generate_monte_carlo_paths,
+    )
+    from finlib.data.indian_market_history import _compute_cagr
+
+    # Schema validation errors
+    with pytest.raises(ValueError, match="life_expectancy"):
+        WealthLongevityRequest(current_age=50, life_expectancy=53)
+    with pytest.raises(ValueError, match="Asset allocation"):
+        WealthLongevityRequest(equity_pct=50.0, fixed_income_pct=20.0, property_pct=10.0)
+
+    # Registry edge cases on planned & unknown modules
+    reg = SimulatorRegistry()
+    reg.register_planned(
+        SimulatorMetadata(
+            id="planned_calc",
+            title="Planned",
+            subtitle="Sub",
+            description="Desc",
+            category="Cat",
+            status="coming_soon",
+        )
+    )
+    assert len(reg.list_all(include_retired=False)) == 1
+    reg.retire("planned_calc")
+    assert len(reg.list_all(include_retired=False)) == 0
+    assert len(reg.list_all(include_retired=True)) == 1
+    reg.activate("planned_calc")
+    assert reg.get_status("planned_calc") == "active"
+
+    # Clear status override to test direct metadata status fallback
+    reg._status_overrides.clear()
+    assert reg.get_status("planned_calc") == "coming_soon"
+
+    with pytest.raises(KeyError):
+        reg.retire("nope")
+    with pytest.raises(KeyError):
+        reg.activate("nope")
+    with pytest.raises(KeyError):
+        reg.get_status("nope")
+    with pytest.raises(KeyError):
+        reg.get("nope")
+
+    # Monte Carlo sampling methods: parametric_correlated, block_bootstrap, and constant inflation
+    mc_param = generate_monte_carlo_paths(
+        horizon_years=10,
+        num_simulations=50,
+        sampling_method="parametric_correlated",
+        use_historical_inflation_volatility=False,
+        seed=42,
+    )
+    assert mc_param["equity"].shape == (50, 10)
+    assert np.allclose(mc_param["cpi"], 0.06)
+
+    mc_block = generate_monte_carlo_paths(
+        horizon_years=10,
+        num_simulations=50,
+        sampling_method="block_bootstrap",
+        block_size=3,
+        seed=42,
+    )
+    assert mc_block["equity"].shape == (50, 10)
+
+    hist_override = generate_historical_backtest_paths(horizon_years=10, base_inflation_override=0.06)
+    assert hist_override["cpi"].shape == (20, 10)
+
+    # CAGR edge cases
+    assert _compute_cagr(np.array([])) == 0.0
+    assert _compute_cagr(np.array([-1.5])) == 0.0
+
+
+def test_finance_and_simulator_verdict_branches() -> None:
+    from finlib.core.finance import compute_longevity_histogram
+    from finlib.simulators.wealth_longevity import WealthLongevitySimulator
+
+    assert format_inr(500) == "₹500"
+    assert format_inr(-500) == "-₹500"
+    assert format_inr_compact(2500) == "₹2.5 K"
+    assert format_inr_compact(500) == "₹500"
+    assert compute_longevity_histogram(np.array([]), horizon_years=30) == []
+
+    # Test property modes, zero financial weights, uninsured medical shocks, and overweight FI rebalancing
+    n_paths, horizon = 6, 6
+    eq_low = np.full((n_paths, horizon), -0.25)
+    fi_high = np.full((n_paths, horizon), 0.15)
+    prop_ret = np.full((n_paths, horizon), 0.08)
+    cpi = np.full((n_paths, horizon), 0.05)
+
+    for p_mode in ("illiquid_excluded", "illiquid_with_rent", "rebalanced", "liquidate_fallback"):
+        res = simulate_portfolio_paths(
+            total_corpus=1_50_00_000.0,
+            equity_weight=0.4,
+            fixed_income_weight=0.4,
+            property_weight=0.2,
+            initial_annual_expense=18_00_000.0,
+            equity_returns=eq_low,
+            fixed_income_returns=fi_high,
+            property_returns=prop_ret,
+            inflation_rates=cpi,
+            property_mode=p_mode,  # type: ignore[arg-type]
+            has_medical_insurance=False,
+            random_expense_enabled=False,
+            rebalance_enabled=True,
+            rebalance_frequency_years=1,
+        )
+        assert res["drawable_nominal"].shape == (n_paths, horizon + 1)
+
+    # 100% property (zero financial weight)
+    res_prop_only = simulate_portfolio_paths(
+        total_corpus=1_00_00_000.0,
+        equity_weight=0.0,
+        fixed_income_weight=0.0,
+        property_weight=1.0,
+        initial_annual_expense=2_00_000.0,
+        equity_returns=eq_low,
+        fixed_income_returns=fi_high,
+        property_returns=prop_ret,
+        inflation_rates=cpi,
+        property_mode="illiquid_with_rent",
+        property_rental_yield=0.05,
+    )
+    assert res_prop_only["years_lasted"][0] == 0.0
+
+    # Test WealthLongevitySimulator verdicts: retire_ready, borderline, at_risk, shortfall
+    sim = WealthLongevitySimulator()
+    for status_target, stats_mock in [
+        (
+            "retire_ready",
+            {
+                "success_probability_pct": 92.0,
+                "percentiles_years": {"p10": 35.0, "p50": 55.0},
+                "depletion_ages": {"p10": 75.0, "p50": 95.0},
+            },
+        ),
+        (
+            "borderline",
+            {
+                "success_probability_pct": 72.0,
+                "percentiles_years": {"p10": 22.0, "p50": 48.0},
+                "depletion_ages": {"p10": 62.0, "p50": 88.0},
+            },
+        ),
+        (
+            "at_risk",
+            {
+                "success_probability_pct": 45.0,
+                "percentiles_years": {"p10": 15.0, "p50": 32.0},
+                "depletion_ages": {"p10": 55.0, "p50": 72.0},
+            },
+        ),
+        (
+            "shortfall",
+            {
+                "success_probability_pct": 12.0,
+                "percentiles_years": {"p10": 8.0, "p50": 16.0},
+                "depletion_ages": {"p10": 48.0, "p50": 56.0},
+            },
+        ),
+    ]:
+        v = sim._build_verdict(
+            longevity_stats=stats_mock,
+            current_age=40,
+            life_expectancy=85,
+            target_horizon=45,
+            max_sim_horizon=55,
+            swr_on_drawable=3.5,
+            benchmark_swr=3.2,
+            required_drawable_corpus=4_00_00_000.0,
+            initial_drawable_corpus=3_00_00_000.0,
+        )
+        assert v["status"] == status_target
+
+    # Chart event annotations fallback when notable_runs is empty
+    ann = sim._build_chart_event_annotations(
+        current_age=40,
+        target_horizon=10,
+        known_future_expenses=[],
+        home_imp_enabled=False,
+        home_imp_interval=5,
+        home_imp_pct=0.03,
+        home_imp_var=0.01,
+        rebalance_enabled=True,
+        rebalance_freq_years=2,
+        notable_runs=[],
+    )
+    assert "42" in ann["events_by_age"]
+
+
+def test_parser_and_system1_classifier_all_heuristics(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import date, datetime
+    import xlrd
+    from finlib.analyzers.expense_analyzer import BankStatementExpenseAnalyzer
+    from finlib.analyzers.statement_parser import (
+        extract_raw_rows_from_file,
+        np_isnan,
+        try_parse_amount,
+        try_parse_date,
+    )
+
+    # 1. System 1 Contextual Heuristics (3a, 3b, 3c, 3d, and fallback)
+    assert classify_transaction_system1("ATM CASH WITHDRAWAL", 5000.0)["matched_cue"] == "ATM / Cash Withdrawal"
+    rent_h = classify_transaction_system1(
+        "NEFT TRANSFER TO OWNER", 25000.0, day_of_month=5, recurring_amount_count=2
+    )
+    assert rent_h["category_id"] == "rent"
+    assert classify_transaction_system1("SI- AUTO DEBIT MANDATE", 5000.0)["category_id"] == "emis"
+    assert classify_transaction_system1("SI- AUTO DEBIT MANDATE", 500.0)["category_id"] == "subscriptions"
+    assert classify_transaction_system1("UPI/987654/TEA STALL", 120.0)["category_id"] == "groceries"
+    assert classify_transaction_system1("IMPS/999111/MISC OUTFLOW", 1234.0)["category_id"] == "other"
+
+    # 2. ExpenseAnalyzer with investments included & missing raw_rows error
+    analyzer = BankStatementExpenseAnalyzer()
+    with pytest.raises(ValueError, match="raw_rows"):
+        analyzer.run({})
+    res_inv = analyzer.analyze_rows(
+        raw_rows=[
+            ["Date", "Narration", "Debit"],
+            ["2026-09-05", "ACH D- MUTUAL FUND SIP", "25000"],
+        ],
+        include_investments_in_expenses=True,
+    )
+    assert res_inv["summary"]["estimated_monthly_expense"] == 25000.0
+
+    # 3. Date & Amount parser edge cases
+    assert try_parse_date(None) is None
+    assert try_parse_date(datetime(2026, 9, 1, 12, 0)) == date(2026, 9, 1)
+    assert try_parse_date(date(2026, 9, 2)) == date(2026, 9, 2)
+    assert try_parse_date(45200) == date(2023, 10, 1)
+    assert try_parse_date("short") is None
+
+    assert try_parse_amount(None) == (None, None)
+    assert try_parse_amount(-450.0) == (450.0, "DR")
+    assert try_parse_amount(float("nan")) == (None, None)
+    assert try_parse_amount("123456789012") == (None, None)
+    assert try_parse_amount("Rs. ") == (None, None)
+    assert np_isnan(float("nan")) is True
+
+    # 4. File extraction (.xls mock, latin-1 CSV, empty CSV, pipe delimiter fallback)
+    class FakeCell:
+        def __init__(self, ctype: int, value: Any) -> None:
+            self.ctype = ctype
+            self.value = value
+
+    class FakeSheet:
+        nrows = 2
+        ncols = 2
+
+        def cell(self, r: int, c: int) -> FakeCell:
+            if r == 0:
+                return FakeCell(1, "Date" if c == 0 else "Amount")
+            return FakeCell(xlrd.XL_CELL_DATE if c == 0 else 2, 45200.0 if c == 0 else 1200.0)
+
+    class FakeBook:
+        nsheets = 1
+        datemode = 0
+
+        def sheet_by_index(self, idx: int) -> FakeSheet:
+            return FakeSheet()
+
+    monkeypatch.setattr(xlrd, "open_workbook", lambda file_contents: FakeBook())
+    xls_rows = extract_raw_rows_from_file(b"fake-xls", "statement.xls")
+    assert len(xls_rows) == 2
+
+    assert extract_raw_rows_from_file(b"   \n  ", "empty.csv") == []
+    latin1_rows = extract_raw_rows_from_file("Date|Narration|Amount\n01/09/2026|Café|250\n".encode("latin-1"), "s.csv")
+    assert len(latin1_rows) == 2
+
+    # 5. Schema discovery edge cases (empty rows, headerless grid, footer/summary rows, salary inflow skip)
+    with pytest.raises(ValueError, match="no readable rows"):
+        discover_statement_schema_and_extract([])
+    with pytest.raises(ValueError, match="No transaction rows"):
+        discover_statement_schema_and_extract([["Date", "Narration", "Withdrawal"]])
+    with pytest.raises(ValueError, match="description/narration"):
+        discover_statement_schema_and_extract([["Date"], ["01/09/2026"]])
+    with pytest.raises(ValueError, match="numeric transaction amount"):
+        discover_statement_schema_and_extract([["Date", "Narration"], ["01/09/2026", "Only text"]])
+
+    headerless = [
+        ["01/09/2026", "UPI/GROCERY STORE", "1200.00"],
+        ["02/09/2026", "NEFT SALARY CREDIT", "95000.00"],
+        ["03/09/2026", "Opening Balance", "50000.00"],
+        ["04/09/2026", "**End of Statement**", "50000.00"],
+        ["05/09/2026", "x", "100.00"],
+        ["06/09/2026"],
+    ]
+    res_hl = discover_statement_schema_and_extract(headerless)
+    assert res_hl["discovered_schema"]["header_row_number"] is None
+    assert len(res_hl["transactions"]) == 1
+    assert res_hl["discovered_schema"]["skipped_credit_rows"] == 1
+
+
+def test_frontend_javascript_test_suite_and_coverage() -> None:
+    import re
+    import subprocess
+
+    proc = subprocess.run(
+        ["npm", "test"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    output = proc.stdout + "\n" + proc.stderr
+    for js_file in ("app/static/js/app.js", "app/static/js/chart.js"):
+        match = re.search(
+            rf"{re.escape(js_file)}\s+(\d+)\s+(\d+)\s+(\d+)%\s+([\d.]+)%",
+            output,
+        )
+        assert match is not None, f"Coverage row not found for {js_file}:\n{output}"
+        func_cov = float(match.group(3))
+        line_cov = float(match.group(4))
+        assert line_cov >= 95.0, f"{js_file} line coverage {line_cov}% < 95%"
+        assert func_cov >= 95.0, f"{js_file} function coverage {func_cov}% < 95%"
+
+
+

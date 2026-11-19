@@ -1,0 +1,10 @@
+{
+  "name": "findependence",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Financial Independence & Wealth Longevity Simulation Platform for India",
+  "scripts": {
+    "test": "node tests/test_frontend.js",
+    "coverage": "node tests/test_frontend.js"
+  }
+}
