@@ -1,0 +1,16 @@
+.gcloudignore
+.env
+.env.*
+.git
+.gitignore
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+.DS_Store
+tests/
+*.log

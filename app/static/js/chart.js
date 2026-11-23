@@ -1,7 +1,8 @@
 /**
- * Self-Contained Local Canvas Chart Engine (Chart.js-compatible subset for FinDependence India)
- * Zero external CDN dependencies — supports line charts, vertical bar charts, horizontal bar charts,
- * interactive tooltips, clickable legends, dashed lines, area fills, and custom point markers.
+ * Self-Contained Local Canvas Chart Engine for FinDependence India
+ * Zero external CDN dependencies — supports line charts (with separate per-curve tooltips),
+ * pie / doughnut charts, vertical bar charts, horizontal bar charts, clickable legends,
+ * dashed lines, area fills, and custom point markers.
  */
 (function (global) {
   'use strict';
@@ -15,7 +16,10 @@
       this.data = this.config.data || { labels: [], datasets: [] };
       this.options = this.config.options || {};
       this._hoverIndex = -1;
+      this._hoverDatasetIndex = -1;
       this._legendBoxes = [];
+      this._linePointsByVisibleIdx = [];
+      this._pieSlices = [];
       this._destroyed = false;
 
       this._onMouseMove = this._handleMouseMove.bind(this);
@@ -49,8 +53,8 @@
       const parent = this.canvas.parentElement;
       const dpr = window.devicePixelRatio || 1;
       const rect = parent ? parent.getBoundingClientRect() : this.canvas.getBoundingClientRect();
-      const width = Math.max(260, Math.floor(rect.width || 600));
-      const height = Math.max(180, Math.floor(rect.height || 300));
+      const width = Math.max(220, Math.floor(rect.width || 600));
+      const height = Math.max(160, Math.floor(rect.height || 260));
 
       if (this.canvas.width !== width * dpr || this.canvas.height !== height * dpr) {
         this.canvas.width = width * dpr;
@@ -86,6 +90,11 @@
       const ctx = this.ctx;
       ctx.clearRect(0, 0, width, height);
 
+      if (this.type === 'pie' || this.type === 'doughnut') {
+        this._drawPieChart(ctx, width, height);
+        return;
+      }
+
       const plugins = this.options.plugins || {};
       const legendOpts = plugins.legend || {};
       const showLegend = legendOpts.display !== false && (this.data.datasets || []).length > 0;
@@ -106,10 +115,86 @@
       }
     }
 
+    _drawPieChart(ctx, width, height) {
+      const labels = this.data.labels || [];
+      const ds = (this.data.datasets && this.data.datasets[0]) || { data: [], backgroundColor: [] };
+      const values = (ds.data || []).map((v) => Math.max(0, Number(v) || 0));
+      const colors = ds.backgroundColor || ['#6366f1', '#10b981', '#f59e0b', '#38bdf8'];
+      const total = values.reduce((a, b) => a + b, 0);
+
+      const cx = Math.min(width * 0.34, height * 0.48);
+      const cy = height * 0.5;
+      const radius = Math.max(36, Math.min(cx - 14, height * 0.42));
+      const innerRadius = this.type === 'doughnut' ? radius * 0.54 : 0;
+
+      this._pieSlices = [];
+      this._plotArea = { left: 0, top: 0, width, height, mode: 'pie', count: values.length };
+
+      ctx.save();
+      if (total <= 0) {
+        ctx.fillStyle = '#334155';
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        let startAngle = -Math.PI / 2;
+        values.forEach((val, idx) => {
+          const sliceAngle = (val / total) * Math.PI * 2;
+          const endAngle = startAngle + sliceAngle;
+          const isHovered = idx === this._hoverIndex;
+          const rOut = isHovered ? radius + 4 : radius;
+
+          ctx.fillStyle = colors[idx % colors.length];
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.arc(cx, cy, rOut, startAngle, endAngle);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          this._pieSlices.push({ idx, startAngle, endAngle, cx, cy, radius: rOut, innerRadius, value: val, pct: (val / total) * 100 });
+          startAngle = endAngle;
+        });
+
+        if (innerRadius > 0) {
+          ctx.fillStyle = '#020617';
+          ctx.beginPath();
+          ctx.arc(cx, cy, innerRadius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Draw right-side legend with exact percentages
+      const legendX = Math.floor(cx + radius + 20);
+      let legendY = Math.max(18, cy - (labels.length * 24) / 2);
+      ctx.font = '600 11px system-ui, -apple-system, sans-serif';
+      labels.forEach((lbl, idx) => {
+        const val = values[idx] || 0;
+        const pct = total > 0 ? ((val / total) * 100).toFixed(1) : '0.0';
+        ctx.fillStyle = colors[idx % colors.length];
+        ctx.beginPath();
+        ctx.arc(legendX + 5, legendY + 6, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#e2e8f0';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${lbl} (${pct}%)`, legendX + 16, legendY + 6);
+        legendY += 24;
+      });
+
+      if (this._hoverIndex >= 0 && this._hoverIndex < labels.length) {
+        this._drawTooltip(ctx, width, height, cx, 12, this._hoverIndex, 0);
+      }
+      ctx.restore();
+    }
+
     _drawLegend(ctx, width) {
       const datasets = this.data.datasets || [];
       ctx.save();
-      ctx.font = '600 12px Inter, -apple-system, sans-serif';
+      ctx.font = '600 12px system-ui, -apple-system, sans-serif';
       let x = 16;
       let y = 14;
       const itemGap = 20;
@@ -168,11 +253,11 @@
       const plotH = Math.max(50, height - topPad - bottomPad);
 
       this._plotArea = { left: leftPad, top: topPad, width: plotW, height: plotH, mode: 'x', count: labels.length };
+      this._linePointsByVisibleIdx = [];
 
-      // Y gridlines & labels
       const yTicks = 5;
       ctx.save();
-      ctx.font = '11px Inter, -apple-system, sans-serif';
+      ctx.font = '11px system-ui, -apple-system, sans-serif';
       for (let i = 0; i <= yTicks; i++) {
         const frac = i / yTicks;
         const val = yMin + (yMax - yMin) * (1 - frac);
@@ -191,7 +276,6 @@
         ctx.fillText(this._formatTick(yOpts, val), leftPad - 8, py);
       }
 
-      // X labels
       const n = labels.length;
       const maxTicks = (xOpts.ticks && xOpts.ticks.maxTicksLimit) || 10;
       const step = Math.max(1, Math.ceil(n / maxTicks));
@@ -203,17 +287,16 @@
         ctx.fillText(String(labels[i]), px, topPad + plotH + 8);
       }
 
-      // Draw datasets
-      visible.forEach(({ ds }) => {
+      visible.forEach(({ ds, idx: origIdx }, visIdx) => {
         const pts = (ds.data || []).map((val, i) => {
           const px = leftPad + (n > 1 ? (i / (n - 1)) * plotW : plotW / 2);
           const clamped = Math.max(yMin, Math.min(yMax, Number(val) || 0));
           const py = topPad + (1 - (clamped - yMin) / Math.max(1e-9, yMax - yMin)) * plotH;
-          return { x: px, y: py, raw: val, idx: i };
+          return { x: px, y: py, raw: val, idx: i, origIdx };
         });
+        this._linePointsByVisibleIdx.push(pts);
         if (!pts.length) return;
 
-        // Area fill
         if (ds.fill && ds.backgroundColor) {
           ctx.save();
           ctx.fillStyle = ds.backgroundColor;
@@ -226,7 +309,6 @@
           ctx.restore();
         }
 
-        // Line stroke
         ctx.save();
         ctx.strokeStyle = ds.borderColor || '#6366f1';
         ctx.lineWidth = ds.borderWidth || 2.5;
@@ -241,14 +323,13 @@
         ctx.stroke();
         ctx.restore();
 
-        // Point markers
         pts.forEach((p, i) => {
           const r = Array.isArray(ds.pointRadius)
             ? ds.pointRadius[i] || 0
             : typeof ds.pointRadius === 'number'
             ? ds.pointRadius
             : 0;
-          const isHovered = i === this._hoverIndex;
+          const isHovered = i === this._hoverIndex && (this._hoverDatasetIndex === -1 || this._hoverDatasetIndex === visIdx);
           const drawR = isHovered ? Math.max(r, 6) : r;
           if (drawR > 0) {
             const bg = Array.isArray(ds.pointBackgroundColor)
@@ -267,7 +348,6 @@
         });
       });
 
-      // Hover guideline & tooltip
       if (this._hoverIndex >= 0 && this._hoverIndex < n) {
         const hx = leftPad + (n > 1 ? (this._hoverIndex / (n - 1)) * plotW : plotW / 2);
         ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
@@ -277,7 +357,13 @@
         ctx.lineTo(hx, topPad + plotH);
         ctx.stroke();
 
-        this._drawTooltip(ctx, width, height, hx, topPad + 16, this._hoverIndex);
+        const activeVisIdx = this._hoverDatasetIndex >= 0 ? this._hoverDatasetIndex : 0;
+        const hoveredPt =
+          this._linePointsByVisibleIdx[activeVisIdx] &&
+          this._linePointsByVisibleIdx[activeVisIdx][this._hoverIndex];
+        const anchorY = hoveredPt ? Math.max(topPad + 8, Math.min(topPad + plotH - 60, hoveredPt.y - 20)) : topPad + 16;
+
+        this._drawTooltip(ctx, width, height, hx, anchorY, this._hoverIndex, activeVisIdx);
       }
 
       ctx.restore();
@@ -290,17 +376,21 @@
       const xOpts = scales.x || {};
       const yOpts = scales.y || {};
 
-      let yMax = 0;
-      visible.forEach(({ ds }) => {
-        (ds.data || []).forEach((v) => {
-          if (typeof v === 'number' && v > yMax) yMax = v;
+      let yMax = typeof yOpts.max === 'number' ? yOpts.max : 0;
+      if (!yMax) {
+        visible.forEach(({ ds }) => {
+          (ds.data || []).forEach((v) => {
+            if (typeof v === 'number' && v > yMax) yMax = v;
+          });
         });
-      });
-      yMax = yMax > 0 ? yMax * 1.15 : 100;
+        yMax = yMax > 0 ? yMax * 1.15 : 100;
+      }
 
-      const leftPad = 60;
+      const hasXTitle = Boolean(xOpts.title && xOpts.title.display && xOpts.title.text);
+      const hasYTitle = Boolean(yOpts.title && yOpts.title.display && yOpts.title.text);
+      const leftPad = hasYTitle ? 68 : 60;
       const rightPad = 16;
-      const bottomPad = 36;
+      const bottomPad = hasXTitle ? 46 : 36;
       const plotW = Math.max(50, width - leftPad - rightPad);
       const plotH = Math.max(50, height - topPad - bottomPad);
       const n = labels.length;
@@ -308,9 +398,31 @@
       this._plotArea = { left: leftPad, top: topPad, width: plotW, height: plotH, mode: 'bar-v', count: n };
 
       ctx.save();
-      ctx.font = '10px Inter, -apple-system, sans-serif';
+      ctx.font = '10px system-ui, -apple-system, sans-serif';
 
-      // Y gridlines
+      if (hasYTitle) {
+        ctx.save();
+        ctx.fillStyle = (yOpts.title && yOpts.title.color) || '#94a3b8';
+        ctx.font = '600 10px system-ui, -apple-system, sans-serif';
+        if (typeof ctx.translate === 'function' && typeof ctx.rotate === 'function') {
+          ctx.translate(14, topPad + plotH / 2);
+          ctx.rotate(-Math.PI / 2);
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText(String(yOpts.title.text), 0, 0);
+        }
+        ctx.restore();
+      }
+
+      if (hasXTitle) {
+        ctx.fillStyle = (xOpts.title && xOpts.title.color) || '#94a3b8';
+        ctx.font = '600 11px system-ui, -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(String(xOpts.title.text), leftPad + plotW / 2, height - 3);
+        ctx.font = '10px system-ui, -apple-system, sans-serif';
+      }
+
       const yTicks = 4;
       for (let i = 0; i <= yTicks; i++) {
         const frac = i / yTicks;
@@ -328,15 +440,29 @@
         ctx.fillText(this._formatTick(yOpts, Math.round(val * 10) / 10), leftPad - 8, py);
       }
 
+      if (this.options.targetLine && typeof this.options.targetLine.value === 'number') {
+        const tVal = this.options.targetLine.value;
+        const ty = topPad + (1 - Math.min(yMax, Math.max(0, tVal)) / yMax) * plotH;
+        ctx.save();
+        ctx.strokeStyle = this.options.targetLine.color || '#10b981';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(leftPad, ty);
+        ctx.lineTo(leftPad + plotW, ty);
+        ctx.stroke();
+        ctx.restore();
+      }
+
       if (n > 0 && visible.length > 0) {
         const groupW = plotW / n;
-        const barW = Math.min(38, (groupW * 0.72) / visible.length);
+        const barW = Math.min(36, (groupW * 0.65) / visible.length);
 
         for (let i = 0; i < n; i++) {
           const groupStart = leftPad + i * groupW + (groupW - barW * visible.length) / 2;
           visible.forEach(({ ds }, sIdx) => {
             const val = Number((ds.data || [])[i]) || 0;
-            const bh = Math.max(0, (val / yMax) * plotH);
+            const bh = Math.max(2, (Math.min(yMax, val) / yMax) * plotH);
             const bx = groupStart + sIdx * barW;
             const by = topPad + plotH - bh;
             const color = Array.isArray(ds.backgroundColor)
@@ -347,19 +473,26 @@
             ctx.beginPath();
             ctx.roundRect ? ctx.roundRect(bx, by, Math.max(2, barW - 2), bh, 4) : ctx.rect(bx, by, Math.max(2, barW - 2), bh);
             ctx.fill();
+
+            if (Array.isArray(ds.borderColor) && ds.borderColor[i]) {
+              ctx.strokeStyle = ds.borderColor[i];
+              ctx.lineWidth = (Array.isArray(ds.borderWidth) ? ds.borderWidth[i] : ds.borderWidth) || 2;
+              ctx.stroke();
+            }
           });
 
           ctx.fillStyle = (xOpts.ticks && xOpts.ticks.color) || '#94a3b8';
+          ctx.font = '11px system-ui, -apple-system, sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'top';
           const lbl = String(labels[i]);
-          ctx.fillText(lbl.length > 14 ? lbl.slice(0, 13) + '…' : lbl, leftPad + (i + 0.5) * groupW, topPad + plotH + 8);
+          ctx.fillText(lbl.length > 14 ? lbl.slice(0, 13) + '…' : lbl, leftPad + (i + 0.5) * groupW, topPad + plotH + 7);
         }
       }
 
       if (this._hoverIndex >= 0 && this._hoverIndex < n) {
         const hx = leftPad + (this._hoverIndex + 0.5) * (plotW / Math.max(1, n));
-        this._drawTooltip(ctx, width, height, hx, topPad + 16, this._hoverIndex);
+        this._drawTooltip(ctx, width, height, hx, topPad + 16, this._hoverIndex, -1);
       }
       ctx.restore();
     }
@@ -388,9 +521,8 @@
       this._plotArea = { left: leftPad, top: topPad, width: plotW, height: plotH, mode: 'bar-h', count: n };
 
       ctx.save();
-      ctx.font = '11px Inter, -apple-system, sans-serif';
+      ctx.font = '11px system-ui, -apple-system, sans-serif';
 
-      // X gridlines
       const xTicks = 4;
       for (let i = 0; i <= xTicks; i++) {
         const frac = i / xTicks;
@@ -435,23 +567,29 @@
       }
 
       if (this._hoverIndex >= 0 && this._hoverIndex < n) {
-        this._drawTooltip(ctx, width, height, leftPad + plotW * 0.45, topPad + 16, this._hoverIndex);
+        this._drawTooltip(ctx, width, height, leftPad + plotW * 0.45, topPad + 16, this._hoverIndex, -1);
       }
       ctx.restore();
     }
 
-    _drawTooltip(ctx, width, _height, anchorX, anchorY, dataIndex) {
+    _drawTooltip(ctx, width, _height, anchorX, anchorY, dataIndex, targetVisibleIdx) {
       const labels = this.data.labels || [];
-      const visible = this._getVisibleDatasets();
+      const allVisible = this._getVisibleDatasets();
+      // If a specific curve/dataset is targeted (e.g. separate line chart tooltips), show ONLY that curve's tooltip
+      const visible =
+        typeof targetVisibleIdx === 'number' && targetVisibleIdx >= 0 && targetVisibleIdx < allVisible.length
+          ? [allVisible[targetVisibleIdx]]
+          : allVisible;
+
       const tooltipOpts = (this.options.plugins && this.options.plugins.tooltip) || {};
       const callbacks = tooltipOpts.callbacks || {};
 
       const lines = [String(labels[dataIndex] || '')];
       const items = [];
 
-      visible.forEach(({ ds }) => {
+      visible.forEach(({ ds, idx: datasetIndex }) => {
         const raw = (ds.data || [])[dataIndex];
-        const ctxItem = { dataset: ds, raw, dataIndex };
+        const ctxItem = { dataset: ds, raw, dataIndex, datasetIndex };
         items.push(ctxItem);
         if (typeof callbacks.label === 'function') {
           lines.push(callbacks.label(ctxItem));
@@ -466,7 +604,7 @@
       }
 
       ctx.save();
-      ctx.font = '11px Inter, -apple-system, sans-serif';
+      ctx.font = '11px system-ui, -apple-system, sans-serif';
       let maxW = 0;
       lines.forEach((l) => {
         const w = ctx.measureText(l).width;
@@ -491,7 +629,7 @@
 
       lines.forEach((l, idx) => {
         ctx.fillStyle = idx === 0 ? '#ffffff' : '#cbd5e1';
-        ctx.font = idx === 0 ? '700 11px Inter, sans-serif' : '500 11px Inter, sans-serif';
+        ctx.font = idx === 0 ? '700 11px system-ui, sans-serif' : '500 11px system-ui, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         ctx.fillText(l, bx + pad, by + pad * 0.75 + idx * lineH);
@@ -506,32 +644,70 @@
       const my = e.clientY - rect.top;
       const { left, top, width, height, mode, count } = this._plotArea;
 
+      if (mode === 'pie') {
+        let foundSlice = -1;
+        for (const s of this._pieSlices) {
+          const dx = mx - s.cx;
+          const dy = my - s.cy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist >= s.innerRadius && dist <= s.radius) {
+            let ang = Math.atan2(dy, dx);
+            if (ang < -Math.PI / 2) ang += Math.PI * 2;
+            if (ang >= s.startAngle && ang <= s.endAngle) {
+              foundSlice = s.idx;
+              break;
+            }
+          }
+        }
+        if (foundSlice !== this._hoverIndex) {
+          this._hoverIndex = foundSlice;
+          this.render();
+        }
+        return;
+      }
+
       if (mx < left || mx > left + width || my < top || my > top + height) {
-        if (this._hoverIndex !== -1) {
+        if (this._hoverIndex !== -1 || this._hoverDatasetIndex !== -1) {
           this._hoverIndex = -1;
+          this._hoverDatasetIndex = -1;
           this.render();
         }
         return;
       }
 
       let idx = -1;
+      let dsVisIdx = -1;
       if (mode === 'x') {
         idx = count > 1 ? Math.round(((mx - left) / width) * (count - 1)) : 0;
+        // Find which visible curve is closest vertically to mouse my at this X index
+        let bestDist = Infinity;
+        this._linePointsByVisibleIdx.forEach((pts, vIdx) => {
+          const pt = pts[idx];
+          if (pt) {
+            const d = Math.abs(my - pt.y);
+            if (d < bestDist) {
+              bestDist = d;
+              dsVisIdx = vIdx;
+            }
+          }
+        });
       } else if (mode === 'bar-v') {
         idx = Math.min(count - 1, Math.floor(((mx - left) / width) * count));
       } else if (mode === 'bar-h') {
         idx = Math.min(count - 1, Math.floor(((my - top) / height) * count));
       }
 
-      if (idx !== this._hoverIndex) {
+      if (idx !== this._hoverIndex || dsVisIdx !== this._hoverDatasetIndex) {
         this._hoverIndex = idx;
+        this._hoverDatasetIndex = dsVisIdx;
         this.render();
       }
     }
 
     _handleMouseLeave() {
-      if (this._hoverIndex !== -1) {
+      if (this._hoverIndex !== -1 || this._hoverDatasetIndex !== -1) {
         this._hoverIndex = -1;
+        this._hoverDatasetIndex = -1;
         this.render();
       }
     }
@@ -552,6 +728,14 @@
             this.render();
           }
           return;
+        }
+      }
+
+      if (this._plotArea && this._plotArea.mode === 'bar-v' && this._plotArea.count > 0 && typeof this.options.onClick === 'function') {
+        const { left, top, width, height, count } = this._plotArea;
+        if (mx >= left && mx <= left + width && my >= top && my <= top + height) {
+          const idx = Math.min(count - 1, Math.floor(((mx - left) / width) * count));
+          this.options.onClick(e, [{ index: idx, datasetIndex: 0 }]);
         }
       }
     }

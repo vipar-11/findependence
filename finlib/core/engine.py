@@ -5,9 +5,9 @@ Provides:
 1. `BaseSimulator` & `SimulatorRegistry` for plugging in, activating, or retiring
    financial independence simulators, calculators, and analyzers with minimal maintenance.
 2. `generate_monte_carlo_paths`: Random historical sampling (IID bootstrap, block bootstrap,
-   and correlated multivariate normal) calibrated to Indian market history (1991-2025).
+   and correlated multivariate normal) calibrated to the last 20 years of Indian market data.
 3. `generate_historical_backtest_paths`: Rolling historical window generator across
-   actual Indian market cycles.
+   the last 20 years of Indian market cycles.
 """
 
 from __future__ import annotations
@@ -57,11 +57,6 @@ class BaseSimulator(ABC):
 class SimulatorRegistry:
     """
     Central lifecycle registry for all functions/modules in FinDependence India.
-
-    Makes adding a new module or retiring an unused module a single-line operation:
-    - `registry.register(MyModule())`
-    - `registry.retire("old_module_id")`
-    - `registry.activate("module_id")`
     """
 
     def __init__(self) -> None:
@@ -166,13 +161,14 @@ def generate_monte_carlo_paths(
     horizon_years: int,
     num_simulations: int = 1000,
     sampling_method: SamplingMethod = "iid_bootstrap",
-    base_inflation_override: float | None = 0.06,
+    base_inflation_override: float | None = None,
     use_historical_inflation_volatility: bool = True,
     block_size: int = 3,
     seed: int | None = None,
 ) -> dict[str, np.ndarray | int]:
     """
-    Generate random multi-asset return paths by sampling from Indian market history (1991-2025).
+    Generate random multi-asset return paths by sampling from the last 20 years of Indian market history.
+    By default (`base_inflation_override=None`), inflation comes directly from the historical market dataset.
     """
     actual_seed = seed if seed is not None else secrets.randbits(31)
     rng = np.random.default_rng(actual_seed)
@@ -238,7 +234,7 @@ def generate_historical_backtest_paths(
     base_inflation_override: float | None = None,
 ) -> dict[str, Any]:
     """
-    Generate historical rolling window paths starting at each year in Indian market history (1991-2025).
+    Generate historical rolling window paths starting at each year in the last 20 years of Indian market history.
     """
     hist = get_historical_arrays()
     years = hist["years"]

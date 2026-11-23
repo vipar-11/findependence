@@ -1,0 +1,36 @@
+year,equity_return,fixed_income_return,property_return,cpi_inflation,regime_note
+1991,0.8210,0.1200,0.1450,0.1387,Economic Liberalization Boom
+1992,0.3800,0.1250,0.1600,0.1179,Securities Market Surge & Correction
+1993,0.2950,0.1100,0.1350,0.0636,Institutional Entry & Post-Reform Recovery
+1994,0.1820,0.1050,0.1800,0.1021,Mid-90s Industrial Expansion
+1995,-0.2010,0.1150,0.1100,0.1022,Liquidity Tightening Bear Market
+1996,-0.0040,0.1200,0.0550,0.0898,Political Transition Consolidation
+1997,0.1980,0.1150,-0.0200,0.0716,Asian Financial Crisis Contagion
+1998,-0.1570,0.1100,-0.0350,0.1323,Sanctions & Global Turmoil
+1999,0.6520,0.1050,0.0450,0.0467,IT & Dot-Com Surge
+2000,-0.1990,0.0950,0.0400,0.0401,Dot-Com Bubble Burst
+2001,-0.1500,0.0900,0.0350,0.0378,Global Recession & Market Crash
+2002,0.0530,0.0800,0.0520,0.0430,Rate Cut Cycle
+2003,0.7380,0.0650,0.1150,0.0381,Structural Bull Market Launch
+2004,0.1300,0.0575,0.1550,0.0377,Infrastructure & Capex Cycle
+2005,0.3860,0.0600,0.1950,0.0425,High GDP Growth Boom
+2006,0.4110,0.0650,0.2100,0.0580,Real Estate & Equity Surge
+2007,0.5600,0.0825,0.1850,0.0637,Pre-GFC Peak Growth
+2008,-0.5130,0.0875,-0.0450,0.0835,Global Financial Crisis Crash
+2009,0.7760,0.0725,0.0950,0.1088,Post-GFC Stimulus Rebound
+2010,0.1920,0.0775,0.1650,0.1199,High Inflation Recovery
+2011,-0.2380,0.0900,0.1400,0.0886,Rate Hike & Global Debt Turmoil
+2012,0.2940,0.0900,0.1500,0.0931,Liquidity Driven Rebound
+2013,0.0810,0.0875,0.1050,0.1091,Taper Tantrum & Currency Pressure
+2014,0.3290,0.0875,0.0800,0.0635,Inflation Targeting & Reform Rally
+2015,-0.0300,0.0800,0.0480,0.0491,Earnings Consolidation
+2016,0.0440,0.0725,0.0320,0.0495,Currency Transition & Deposit Growth
+2017,0.3030,0.0675,0.0380,0.0333,Domestic Mutual Fund Inflow Boom
+2018,0.0460,0.0675,0.0420,0.0394,Credit Tightening & Largecap Resilience
+2019,0.1350,0.0650,0.0350,0.0373,Corporate Tax Cut & Largecap Rally
+2020,0.1610,0.0540,0.0150,0.0662,Pandemic Shock & V-Shaped Recovery
+2021,0.2560,0.0510,0.0550,0.0513,Post-Pandemic Expansion
+2022,0.0570,0.0590,0.0780,0.0670,Global Rate Hike Cycle
+2023,0.2130,0.0685,0.0950,0.0565,Domestic Capex & Manufacturing Surge
+2024,0.1010,0.0700,0.0880,0.0495,Steady Domestic Flows
+2025,0.1140,0.0685,0.0750,0.0450,Balanced Growth & Moderating Inflation

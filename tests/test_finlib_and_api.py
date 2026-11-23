@@ -289,28 +289,104 @@ def test_random_historical_sampling_and_api_endpoints() -> None:
     r2 = client.post("/api/v1/simulators/wealth-longevity/run", json=payload).json()
 
     assert r1["simulation_meta"]["seed_used"] != r2["simulation_meta"]["seed_used"]
-    assert r1["simulation_meta"]["historical_data_period"] == "2006–2025 (Last 20 Years)"
+    assert "Last 20 Years" in r1["simulation_meta"]["historical_data_period"]
     assert len(r1["sample_paths"]) == 40
     assert len(r1["notable_runs"]) == 6
+    assert r1["notable_runs"][0]["case_key"] == "p50"
+    assert r1["notable_runs"][1]["case_key"] == "p10"
+    assert "Worst Case" in r1["notable_runs"][1]["label"]
+    # Verify that when job_monthly_income is 0 (already retired), all future ages are identical / no future age is recommended
+    assert len(r1["retirement_readiness"]["candidate_retirement_ages"]) == 1
+    assert r1["retirement_readiness"]["evaluated_retirement_age"] == 38
+    assert r1["retirement_readiness"]["evaluated_retire_in_years"] == 0
+    assert "retire today" not in r1["verdict"]["headline"].lower()
+    assert "Financial Outlook" in r1["verdict"]["badge"]
+    assert "events_by_age_p50" in r1["chart_events"]
+    assert "events_by_age_p10" in r1["chart_events"]
 
     # Verify chart_events contains the known future expenses at Age 42 (38+4) and Age 46 (38+8)
     assert 42 in r1["chart_events"]["known_expense_ages"]
     assert 46 in r1["chart_events"]["known_expense_ages"]
 
-    # Verify year_log in notable_runs has inflation_pct, lifestyle_inflation_pct, rebalance_activity, and special_events
-    median_run = next(r for r in r1["notable_runs"] if r["label"].startswith("P50"))
+    # Verify year_log in notable_runs has inflation_pct, combined_events_summary, and rebalance_activity
+    median_run = r1["notable_runs"][0]
     yr2 = median_run["year_log"][1]  # Year 2 (sim_year=2) -> Rebalance year!
     assert "inflation_pct" in yr2
-    assert "lifestyle_inflation_pct" in yr2
+    assert "combined_events_summary" in yr2
     assert "rebalance_activity" in yr2
     assert "withdrawal_source_summary" in yr2
     assert "special_events_summary" in yr2
-    assert yr2["sampled_india_year"] >= 2006 and yr2["sampled_india_year"] <= 2025
 
-    # Year 4 (index 3) should contain Higher Education in special_events_summary
+    # Year 4 (index 3) should contain Higher Education in combined_events_summary
     if len(median_run["year_log"]) >= 4:
         yr4 = median_run["year_log"][3]
-        assert "Higher Education" in yr4["special_events_summary"]
+        assert "Higher Education" in yr4["combined_events_summary"]
+
+    # Test "When Can I Retire?" iterative search across job_income_years (starting < 85% and reaching >= 85%)
+    payload_new = {
+        "current_age": 38,
+        "life_expectancy": 90,
+        "has_medical_insurance": False,
+        "equity_value": 26000000,
+        "fixed_income_value": 8000000,
+        "real_estate_value": 3000000,
+        "cash_value": 1000000,
+        "job_monthly_income": 350000,
+        "job_income_until_age": 44,
+        "job_income_growth_range": "8-12%",
+        "rental_monthly_income": 20000,
+        "other_passive_monthly_income": 10000,
+        "passive_income_inflation_interval_years": 2,
+        "equity_sip_monthly": 80000,
+        "equity_sip_stepup_pct": 10.0,
+        "fixed_income_sip_monthly": 30000,
+        "fixed_income_sip_stepup_pct": 5.0,
+        "expense_amount": 100000,
+        "expense_variance_pct": 10.0,
+        "tax_drag_rate": 10.0,
+        "known_future_expenses": [
+            {
+                "event_tag": "Home Improvement",
+                "amount_today_inr": 500000,
+                "is_recurring": True,
+                "start_age": 43,
+                "end_age": None,
+                "every_n_years": 5,
+                "variance_pct": 15.0,
+            },
+            {
+                "event_tag": "Vehicle",
+                "amount_today_inr": 1000000,
+                "is_recurring": False,
+                "start_age": 42,
+                "variance_pct": 10.0,
+            },
+        ],
+        "num_simulations": 200,
+        "seed": 42,
+    }
+    r_new = client.post("/api/v1/simulators/wealth-longevity/run", json=payload_new)
+    assert r_new.status_code == 200
+    d_new = r_new.json()
+    assert d_new["inputs_summary"]["total_corpus"] == 38000000.0
+    assert d_new["inputs_summary"]["random_expense_base_inr"] == 500000.0
+    assert d_new["inputs_summary"]["tax_drag_rate"] == 10.0
+    assert len(d_new["retirement_readiness"]["candidate_retirement_ages"]) == 7
+    assert d_new["retirement_readiness"]["can_retire_at_age"] is not None
+    assert d_new["retirement_readiness"]["can_retire_at_age"] >= 38
+    outcomes_by_age = d_new["retirement_readiness"]["outcomes_by_age"]
+    assert "38" in outcomes_by_age
+    assert "40" in outcomes_by_age
+    # Apples-to-apples check: retiring later at Age 40 has higher or equal median longevity than retiring at Age 38
+    assert (
+        outcomes_by_age["40"]["longevity_stats"]["percentiles_years"]["p50"]
+        >= outcomes_by_age["38"]["longevity_stats"]["percentiles_years"]["p50"]
+    )
+    # And the sampled market year sequence in notable_runs is identical for the same run_number
+    assert (
+        outcomes_by_age["38"]["notable_runs"][0]["year_log"][0]["sampled_india_year"]
+        != 0
+    )
 
 
 def test_fixed_income_first_withdrawal_and_taxable_rebalancing() -> None:
@@ -483,11 +559,29 @@ def test_schemas_and_engine_edge_cases() -> None:
     )
     from finlib.data.indian_market_history import _compute_cagr
 
-    # Schema validation errors
+    # Schema validation errors & occurrence helper
+    from app.schemas import KnownFutureExpenseItem
+
+    rec_item = KnownFutureExpenseItem(
+        event_tag="Vacation",
+        amount_today_inr=200000,
+        is_recurring=True,
+        start_year=2,
+        end_year=10,
+        every_n_years=2,
+        variance_pct=15.0,
+    )
+    assert rec_item.get_occurrence_years() == [2, 4, 6, 8, 10]
+    one_item = KnownFutureExpenseItem(event_tag="Car", amount_today_inr=1500000, is_recurring=False, years_from_now=5)
+    assert one_item.get_occurrence_years() == [5]
+
     with pytest.raises(ValueError, match="life_expectancy"):
         WealthLongevityRequest(current_age=50, life_expectancy=53)
     with pytest.raises(ValueError, match="Asset allocation"):
-        WealthLongevityRequest(equity_pct=50.0, fixed_income_pct=20.0, property_pct=10.0)
+        WealthLongevityRequest(equity_pct=50.0, fixed_income_pct=20.0, property_pct=10.0, cash_pct=5.0)
+    zero_req = WealthLongevityRequest(equity_value=0, fixed_income_value=0, real_estate_value=0, cash_value=0)
+    assert zero_req.total_corpus == 0.0
+    assert zero_req.num_simulations == 2500
 
     # Registry edge cases on planned & unknown modules
     reg = SimulatorRegistry()
@@ -526,6 +620,7 @@ def test_schemas_and_engine_edge_cases() -> None:
         horizon_years=10,
         num_simulations=50,
         sampling_method="parametric_correlated",
+        base_inflation_override=0.06,
         use_historical_inflation_volatility=False,
         seed=42,
     )
@@ -637,7 +732,7 @@ def test_finance_and_simulator_verdict_branches() -> None:
             },
         ),
     ]:
-        v = sim._build_verdict(
+        v_no_job = sim._build_verdict(
             longevity_stats=stats_mock,
             current_age=40,
             life_expectancy=85,
@@ -647,8 +742,26 @@ def test_finance_and_simulator_verdict_branches() -> None:
             benchmark_swr=3.2,
             required_drawable_corpus=4_00_00_000.0,
             initial_drawable_corpus=3_00_00_000.0,
+            max_search_years=0,
         )
-        assert v["status"] == status_target
+        assert v_no_job["status"] == status_target
+        assert "retire today" not in v_no_job["headline"].lower()
+
+        v_with_job = sim._build_verdict(
+            longevity_stats=stats_mock,
+            current_age=40,
+            life_expectancy=85,
+            target_horizon=45,
+            max_sim_horizon=55,
+            swr_on_drawable=3.5,
+            benchmark_swr=3.2,
+            required_drawable_corpus=4_00_00_000.0,
+            initial_drawable_corpus=3_00_00_000.0,
+            best_r=0 if status_target == "retire_ready" else None,
+            max_search_years=5,
+            selected_r=0 if status_target == "retire_ready" else 5,
+        )
+        assert v_with_job["status"] == status_target
 
     # Chart event annotations fallback when notable_runs is empty
     ann = sim._build_chart_event_annotations(

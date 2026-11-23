@@ -1,47 +1,73 @@
 /**
- * FinDependence India — Simple Step-by-Step Wizard & Random Historical Simulation Runner
+ * FinDependence India — "When Can I Retire?" 5-Step Planner & Expense Analyzer
+ * User personal inputs (age, health cover, assets, income, SIPs, expenses, goals) are NOT prefilled.
+ * Only configuration items (tax drag, lifestyle inflation, plan until age, rebalance, shocks) have defaults.
  */
 
 const state = {
   step: 1,
-  current_age: 38,
-  life_expectancy: 90,
-  has_medical_insurance: true,
-  corpus_lakhs: 350, // ₹3.50 Cr
-  equity_pct: 55,
-  fixed_income_pct: 30,
-  property_pct: 15,
+  current_age: null,
+  has_medical_insurance: null,
+
+  // Step 2: Individual Asset Class Values in Lakhs (Not prefilled)
+  equity_lakhs: 0,
+  fixed_income_lakhs: 0,
+  real_estate_lakhs: 0,
+  cash_lakhs: 0,
+  corpus_lakhs: 0,
+  equity_pct: 0,
+  fixed_income_pct: 0,
+  property_pct: 0,
+  cash_pct: 0,
+
+  // Step 3: Income Categories (Not prefilled)
+  job_monthly_income: 0,
+  job_income_years: 0,
+  job_income_until_age: null,
+  job_income_growth_pct: 0,
+  job_income_growth_max_pct: 0,
+  job_income_growth_range: '',
+  rental_monthly_income: 0,
+  other_passive_monthly_income: 0,
+  passive_income_inflation_interval_years: 1,
+
+  // Step 4: Ongoing Monthly SIPs (Not prefilled; automatically continue until end of income)
+  equity_sip_monthly: 0,
+  equity_sip_stepup_pct: 0,
+  fixed_income_sip_monthly: 0,
+  fixed_income_sip_stepup_pct: 0,
+  sip_years: 0,
+
+  // Step 5: Living Expenses & Planned Future Expenses (Not prefilled)
   expense_frequency: 'monthly',
-  expense_amount: 100000,
-  base_inflation_rate: 6.0,
+  expense_amount: 0,
+  expense_variance_pct: 0,
+  goal_form_is_recurring: false,
+  known_future_expenses: [],
+
+  // Configuration Settings (Prefilled)
+  life_expectancy: 90,
   lifestyle_inflation_rate: 0.5,
-  fixed_income_tax_rate: 30.0,
-  equity_tax_rate: 12.5,
+  tax_drag_rate: 10.0,
   rebalance_enabled: true,
   rebalance_frequency_years: 2,
-  home_improvement_enabled: true,
-  home_improvement_interval_years: 5,
-  home_improvement_pct_of_property: 3.0,
-  home_improvement_variance_pct: 1.0,
   random_expense_enabled: true,
-  random_expense_base_inr: 200000, // ₹2.0 Lakhs
+  random_expense_base_inr: 200000,
   random_expense_variance_pct: 25.0,
   random_expense_annual_probability_pct: 15.0,
-  known_future_expenses: [
-    { years_from_now: 8, amount_today_inr: 2500000, event_tag: 'Higher Education' },
-    { years_from_now: 14, amount_today_inr: 3500000, event_tag: 'Marriage' },
-  ],
   property_mode: 'liquidate_fallback',
   sampling_method: 'iid_bootstrap',
-  num_simulations: 1000,
-  chart_scale: 'real', // 'real' or 'nominal'
-  curve_focus: 'both', // 'both', 'p50', or 'p10'
+  num_simulations: 2500,
+  chart_scale: 'real',
+  curve_focus: 'both',
+  selected_retirement_age: null,
   result: null,
 };
 
 const charts = {
+  assetPie: null,
+  retirementAge: null,
   spaghetti: null,
-  histogram: null,
   survival: null,
 };
 
@@ -61,12 +87,24 @@ function formatInrCompact(amount, decimals = 2) {
   return `${sign}₹${Math.round(abs)}`;
 }
 
-// ==================== WIZARD NAVIGATION ====================
+// ==================== 5-STEP WIZARD NAVIGATION ====================
+function isStep1Complete() {
+  const ageVal = state.current_age || parseInt((document.getElementById('ageInput') || {}).value, 10) || 0;
+  if (ageVal >= 18) state.current_age = ageVal;
+  return Boolean(state.current_age && state.current_age >= 18 && state.has_medical_insurance !== null);
+}
+
 function goToStep(stepNum) {
+  if (stepNum > 1 && !isStep1Complete()) {
+    const err1 = document.getElementById('step1ValidationError');
+    if (err1) err1.classList.remove('hidden');
+    stepNum = 1;
+  }
   state.step = stepNum;
-  [1, 2, 3].forEach((n) => {
+  [1, 2, 3, 4, 5].forEach((n) => {
     const stepEl = document.getElementById(`wizardStep${n}`);
     const indEl = document.getElementById(`stepIndicator${n}`);
+    if (!stepEl || !indEl) return;
     if (n === stepNum) {
       stepEl.classList.remove('hidden');
       indEl.className = 'text-left p-3 rounded-xl border transition border-indigo-500 bg-indigo-500/10';
@@ -79,6 +117,12 @@ function goToStep(stepNum) {
       indEl.querySelector('span:last-child').className = 'text-xs font-semibold text-slate-300';
     }
   });
+  if (stepNum === 2) {
+    renderSplitUI();
+  } else if (stepNum === 5) {
+    syncGoalFormDefaults();
+    updateGoalRepeatPreview();
+  }
 }
 
 function returnToWizard(stepNum = 1) {
@@ -89,7 +133,7 @@ function returnToWizard(stepNum = 1) {
   goToStep(stepNum);
 }
 
-// ==================== STEP 1: AGE & MEDICAL INSURANCE ====================
+// ==================== STEP 1: AGE & MEDICAL INSURANCE (MANDATORY) ====================
 function updateAge(val) {
   let age = parseInt(val, 10);
   if (isNaN(age)) return;
@@ -98,11 +142,19 @@ function updateAge(val) {
   document.getElementById('ageInput').value = age;
   document.getElementById('ageSlider').value = Math.min(75, Math.max(20, age));
 
+  if (isStep1Complete()) {
+    const err1 = document.getElementById('step1ValidationError');
+    if (err1) err1.classList.add('hidden');
+  }
+
   if (state.life_expectancy <= state.current_age + 5) {
     state.life_expectancy = Math.min(105, state.current_age + 15);
     document.getElementById('targetAgeSlider').value = state.life_expectancy;
-    updateAdvSettings();
   }
+  syncGoalFormDefaults(true);
+  updateIncomeSettings();
+  updateGoalRepeatPreview();
+  updateAdvSettings();
 }
 
 function setMedicalInsurance(hasIns) {
@@ -110,92 +162,237 @@ function setMedicalInsurance(hasIns) {
   const btnYes = document.getElementById('btnMedInsYes');
   const btnNo = document.getElementById('btnMedInsNo');
   const note = document.getElementById('medInsStatusNote');
+  const shockLakhsInput = document.getElementById('randExpBaseLakhsInput');
+
+  if (isStep1Complete()) {
+    const err1 = document.getElementById('step1ValidationError');
+    if (err1) err1.classList.add('hidden');
+  }
 
   if (state.has_medical_insurance) {
     btnYes.className = 'px-4 py-2 rounded-xl text-xs font-bold border-2 border-emerald-500 bg-emerald-500/20 text-emerald-300 transition';
     btnNo.className = 'px-4 py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-900 text-slate-400 hover:text-white transition';
+    state.random_expense_base_inr = 200000;
+    if (shockLakhsInput) shockLakhsInput.value = '2.0';
     if (note) {
-      note.textContent = '✅ Covered: Standard annual shock probability applies.';
-      note.className = 'text-[11px] text-emerald-400 font-medium';
+      note.textContent = '✅ Medical insurance coverage selected: Yes.';
+      note.className = 'text-xs text-emerald-400 block mt-0.5';
     }
   } else {
     btnNo.className = 'px-4 py-2 rounded-xl text-xs font-bold border-2 border-rose-500 bg-rose-500/20 text-rose-300 transition';
     btnYes.className = 'px-4 py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-900 text-slate-400 hover:text-white transition';
+    state.random_expense_base_inr = 500000;
+    if (shockLakhsInput) shockLakhsInput.value = '5.0';
     if (note) {
-      note.textContent = '⚠️ Uninsured: Higher probability & severity of random medical shock expenses in retirement.';
-      note.className = 'text-[11px] text-rose-400 font-medium';
+      note.textContent = '⚠️ Medical insurance coverage selected: No.';
+      note.className = 'text-xs text-rose-400 block mt-0.5';
     }
   }
 }
 
-// ==================== STEP 2: CORPUS & SPLIT ====================
+// ==================== STEP 2: INDIVIDUAL ASSET VALUES, PIE CHART & LIQUIDITY ====================
+function updateAssetValue(assetKey, rawVal) {
+  const lakhs = Math.max(0, parseFloat(rawVal) || 0);
+  if (assetKey === 'equity') {
+    state.equity_lakhs = lakhs;
+    document.getElementById('equityLakhsInput').value = lakhs || '';
+    document.getElementById('equityLakhsSlider').value = Math.min(1500, lakhs);
+  } else if (assetKey === 'fixed_income') {
+    state.fixed_income_lakhs = lakhs;
+    document.getElementById('fiLakhsInput').value = lakhs || '';
+    document.getElementById('fiLakhsSlider').value = Math.min(1500, lakhs);
+  } else if (assetKey === 'real_estate') {
+    state.real_estate_lakhs = lakhs;
+    document.getElementById('reLakhsInput').value = lakhs || '';
+    document.getElementById('reLakhsSlider').value = Math.min(1500, lakhs);
+  } else if (assetKey === 'cash') {
+    state.cash_lakhs = lakhs;
+    document.getElementById('cashLakhsInput').value = lakhs || '';
+    document.getElementById('cashLakhsSlider').value = Math.min(500, lakhs);
+  }
+  renderSplitUI();
+}
+
 function updateCorpusLakhs(val) {
   const lakhs = Math.max(1, parseFloat(val) || 50);
-  state.corpus_lakhs = lakhs;
-  document.getElementById('corpusLakhsInput').value = lakhs;
-  document.getElementById('corpusLakhsSlider').value = Math.min(2000, lakhs);
-  document.getElementById('corpusFormattedBadge').textContent = formatInrCompact(lakhs * 100000);
+  if (state.corpus_lakhs > 0) {
+    const ratio = lakhs / state.corpus_lakhs;
+    state.equity_lakhs = Math.round(state.equity_lakhs * ratio);
+    state.fixed_income_lakhs = Math.round(state.fixed_income_lakhs * ratio);
+    state.real_estate_lakhs = Math.round(state.real_estate_lakhs * ratio);
+    state.cash_lakhs = Math.max(0, lakhs - state.equity_lakhs - state.fixed_income_lakhs - state.real_estate_lakhs);
+  } else {
+    state.equity_lakhs = Math.round(lakhs * 0.55);
+    state.fixed_income_lakhs = Math.round(lakhs * 0.30);
+    state.real_estate_lakhs = Math.round(lakhs * 0.15);
+    state.cash_lakhs = 0;
+  }
   renderSplitUI();
 }
 
 function updateSplit(changedKey, rawVal) {
-  const val = Math.max(0, Math.min(100, parseInt(rawVal, 10) || 0));
-  const rem = 100 - val;
-
-  if (changedKey === 'equity') {
-    state.equity_pct = val;
-    const other = state.fixed_income_pct + state.property_pct;
-    if (other > 0) {
-      state.fixed_income_pct = Math.round((state.fixed_income_pct / other) * rem);
-      state.property_pct = rem - state.fixed_income_pct;
-    } else {
-      state.fixed_income_pct = rem;
-      state.property_pct = 0;
-    }
-  } else if (changedKey === 'fixed_income') {
-    state.fixed_income_pct = val;
-    const other = state.equity_pct + state.property_pct;
-    if (other > 0) {
-      state.equity_pct = Math.round((state.equity_pct / other) * rem);
-      state.property_pct = rem - state.equity_pct;
-    } else {
-      state.equity_pct = rem;
-      state.property_pct = 0;
-    }
-  } else {
-    state.property_pct = val;
-    const other = state.equity_pct + state.fixed_income_pct;
-    if (other > 0) {
-      state.equity_pct = Math.round((state.equity_pct / other) * rem);
-      state.fixed_income_pct = rem - state.equity_pct;
-    } else {
-      state.equity_pct = Math.round(rem * 0.6);
-      state.fixed_income_pct = rem - state.equity_pct;
-    }
-  }
+  const pct = Math.max(0, Math.min(100, parseFloat(rawVal) || 0));
+  const total = Math.max(100, state.corpus_lakhs || 100);
+  if (changedKey === 'equity') state.equity_lakhs = Math.round((total * pct) / 100);
+  else if (changedKey === 'fixed_income') state.fixed_income_lakhs = Math.round((total * pct) / 100);
+  else state.real_estate_lakhs = Math.round((total * pct) / 100);
   renderSplitUI();
 }
 
 function renderSplitUI() {
-  const totalInr = state.corpus_lakhs * 100000;
-  document.getElementById('eqSlider').value = state.equity_pct;
-  document.getElementById('fiSlider').value = state.fixed_income_pct;
-  document.getElementById('propSlider').value = state.property_pct;
+  const eqL = Math.max(0, Number(state.equity_lakhs) || 0);
+  const fiL = Math.max(0, Number(state.fixed_income_lakhs) || 0);
+  const reL = Math.max(0, Number(state.real_estate_lakhs) || 0);
+  const caL = Math.max(0, Number(state.cash_lakhs) || 0);
+  const sumL = eqL + fiL + reL + caL;
 
-  document.getElementById('eqPctText').textContent = state.equity_pct;
-  document.getElementById('fiPctText').textContent = state.fixed_income_pct;
-  document.getElementById('propPctText').textContent = state.property_pct;
+  state.corpus_lakhs = sumL;
+  if (sumL > 0) {
+    state.equity_pct = Number(((eqL / sumL) * 100).toFixed(1));
+    state.fixed_income_pct = Number(((fiL / sumL) * 100).toFixed(1));
+    state.property_pct = Number(((reL / sumL) * 100).toFixed(1));
+    state.cash_pct = Number(((caL / sumL) * 100).toFixed(1));
+  } else {
+    state.equity_pct = 0;
+    state.fixed_income_pct = 0;
+    state.property_pct = 0;
+    state.cash_pct = 0;
+  }
 
-  document.getElementById('eqAmtText').textContent = formatInrCompact((totalInr * state.equity_pct) / 100);
-  document.getElementById('fiAmtText').textContent = formatInrCompact((totalInr * state.fixed_income_pct) / 100);
-  document.getElementById('propAmtText').textContent = formatInrCompact((totalInr * state.property_pct) / 100);
+  const liquidL = eqL + fiL + caL;
+  const nonLiquidL = reL;
+  const liquidPct = sumL > 0 ? ((liquidL / sumL) * 100).toFixed(1) : '0.0';
+  const nonLiquidPct = sumL > 0 ? ((nonLiquidL / sumL) * 100).toFixed(1) : '0.0';
+
+  document.getElementById('corpusFormattedBadge').textContent = formatInrCompact(sumL * 100000);
+
+  document.getElementById('eqPctText').textContent = state.equity_pct.toFixed(1);
+  document.getElementById('fiPctText').textContent = state.fixed_income_pct.toFixed(1);
+  document.getElementById('propPctText').textContent = state.property_pct.toFixed(1);
+  const cashPctEl = document.getElementById('cashPctText');
+  if (cashPctEl) cashPctEl.textContent = state.cash_pct.toFixed(1);
+
+  document.getElementById('eqAmtText').textContent = formatInrCompact(eqL * 100000);
+  document.getElementById('fiAmtText').textContent = formatInrCompact(fiL * 100000);
+  document.getElementById('propAmtText').textContent = formatInrCompact(reL * 100000);
+  const cashAmtEl = document.getElementById('cashAmtText');
+  if (cashAmtEl) cashAmtEl.textContent = formatInrCompact(caL * 100000);
 
   document.getElementById('barEquity').style.width = `${state.equity_pct}%`;
   document.getElementById('barDebt').style.width = `${state.fixed_income_pct}%`;
+  const barCash = document.getElementById('barCash');
+  if (barCash) barCash.style.width = `${state.cash_pct}%`;
   document.getElementById('barProp').style.width = `${state.property_pct}%`;
+
+  const liqAmtEl = document.getElementById('liquidAmtText');
+  const liqPctEl = document.getElementById('liquidPctText');
+  const nonLiqAmtEl = document.getElementById('nonLiquidAmtText');
+  const nonLiqPctEl = document.getElementById('nonLiquidPctText');
+  if (liqAmtEl) liqAmtEl.textContent = formatInrCompact(liquidL * 100000);
+  if (liqPctEl) liqPctEl.textContent = liquidPct;
+  if (nonLiqAmtEl) nonLiqAmtEl.textContent = formatInrCompact(nonLiquidL * 100000);
+  if (nonLiqPctEl) nonLiqPctEl.textContent = nonLiquidPct;
+
+  renderAssetPieChart(eqL, fiL, reL, caL);
 }
 
-// ==================== STEP 3: EXPENSES, KNOWN FUTURE EVENTS & ADVANCED ====================
+function renderAssetPieChart(eqL, fiL, reL, caL) {
+  const pieEl = document.getElementById('assetPieChart');
+  if (!pieEl) return;
+  const ctx = pieEl.getContext('2d');
+  if (charts.assetPie) charts.assetPie.destroy();
+
+  charts.assetPie = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Equity', 'Fixed Income', 'Real Estate', 'Cash Balance'],
+      datasets: [
+        {
+          label: 'Asset Value',
+          data: [eqL * 100000, fiL * 100000, reL * 100000, caL * 100000],
+          backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#0ea5e9'],
+        },
+      ],
+    },
+    options: {
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: (item) => `${formatInrCompact(item.raw)}`,
+          },
+        },
+      },
+    },
+  });
+}
+
+// ==================== STEP 3: INCOME CATEGORIES ====================
+function parseIncrementRange(rawStr) {
+  const str = String(rawStr || '').trim();
+  const matches = str.match(/\d+(?:\.\d+)?/g);
+  if (!matches || matches.length === 0) {
+    return { minPct: 0, maxPct: 0, rangeStr: '' };
+  }
+  if (matches.length >= 2) {
+    const a = parseFloat(matches[0]) || 0;
+    const b = parseFloat(matches[1]) || 0;
+    const lo = Math.max(0, Math.min(a, b));
+    const hi = Math.max(lo, Math.max(a, b));
+    return { minPct: lo, maxPct: hi, rangeStr: `${lo}-${hi}` };
+  }
+  const single = Math.max(0, parseFloat(matches[0]) || 0);
+  return { minPct: single, maxPct: single, rangeStr: `${single}` };
+}
+
+function updateIncomeSettings() {
+  state.job_monthly_income = Math.max(0, parseFloat(document.getElementById('jobIncomeInput').value) || 0);
+  const baseAge = state.current_age || parseInt((document.getElementById('ageInput') || {}).value, 10) || 38;
+  const rawAgeOrYrs = parseInt(document.getElementById('jobYearsInput').value, 10);
+  if (isNaN(rawAgeOrYrs) || rawAgeOrYrs <= 0) {
+    state.job_income_until_age = null;
+    state.job_income_years = 0;
+  } else if (rawAgeOrYrs > baseAge) {
+    state.job_income_until_age = rawAgeOrYrs;
+    state.job_income_years = rawAgeOrYrs - baseAge;
+  } else {
+    state.job_income_years = rawAgeOrYrs;
+    state.job_income_until_age = baseAge + rawAgeOrYrs;
+  }
+
+  const parsedGrowth = parseIncrementRange(document.getElementById('jobGrowthInput').value);
+  state.job_income_growth_pct = parsedGrowth.minPct;
+  state.job_income_growth_max_pct = parsedGrowth.maxPct;
+  state.job_income_growth_range = parsedGrowth.rangeStr;
+
+  state.rental_monthly_income = Math.max(0, parseFloat(document.getElementById('rentalIncomeInput').value) || 0);
+  state.other_passive_monthly_income = Math.max(0, parseFloat(document.getElementById('passiveIncomeInput').value) || 0);
+
+  const activeJobMo = state.job_income_years > 0 ? state.job_monthly_income : 0;
+  const totalMo = activeJobMo + state.rental_monthly_income + state.other_passive_monthly_income;
+  const badge = document.getElementById('incomeSummaryBadge');
+  if (badge) {
+    badge.textContent = `Total Monthly Income: ${formatInrCompact(totalMo)}/mo (${formatInrCompact(totalMo * 12)}/yr)`;
+  }
+}
+
+// ==================== STEP 4: MONTHLY SIPS (CONTINUE UNTIL END OF INCOME) ====================
+function updateSipSettings() {
+  state.equity_sip_monthly = Math.max(0, parseFloat(document.getElementById('eqSipInput').value) || 0);
+  state.equity_sip_stepup_pct = Math.max(0, parseFloat(document.getElementById('eqSipStepupInput').value) || 0);
+  state.fixed_income_sip_monthly = Math.max(0, parseFloat(document.getElementById('fiSipInput').value) || 0);
+  state.fixed_income_sip_stepup_pct = Math.max(0, parseFloat(document.getElementById('fiSipStepupInput').value) || 0);
+  const hasPassive = state.rental_monthly_income > 0 || state.other_passive_monthly_income > 0;
+  const planYrs = Math.max(0, (state.life_expectancy || 90) - (state.current_age || 38));
+  state.sip_years = hasPassive ? planYrs : state.job_income_years;
+
+  const totalSipMo = state.equity_sip_monthly + state.fixed_income_sip_monthly;
+  const badge = document.getElementById('sipSummaryBadge');
+  if (badge) {
+    badge.textContent = `Total Monthly SIP: ${formatInrCompact(totalSipMo)}/mo`;
+  }
+}
+
+// ==================== STEP 5: EXPENSES, FUTURE GOALS (ONE-OFF & RECURRING) & CONFIG ====================
 function switchExpenseFreq(freq) {
   const prev = state.expense_frequency;
   state.expense_frequency = freq;
@@ -209,28 +406,186 @@ function switchExpenseFreq(freq) {
     slider.min = 15000;
     slider.max = 500000;
     slider.step = 5000;
-    if (prev === 'annual') state.expense_amount = Math.round(state.expense_amount / 12);
+    if (prev === 'annual' && state.expense_amount > 0) {
+      state.expense_amount = Math.round(state.expense_amount / 12);
+    }
   } else {
     btnYr.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white transition';
     btnMo.className = 'px-3 py-1 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition';
     slider.min = 180000;
     slider.max = 6000000;
     slider.step = 50000;
-    if (prev === 'monthly') state.expense_amount = Math.round(state.expense_amount * 12);
+    if (prev === 'monthly' && state.expense_amount > 0) {
+      state.expense_amount = Math.round(state.expense_amount * 12);
+    }
   }
   updateExpense(state.expense_amount);
 }
 
 function updateExpense(val) {
-  const amt = Math.max(1000, parseFloat(val) || 50000);
+  const amt = Math.max(0, parseFloat(val) || 0);
   state.expense_amount = amt;
   const slider = document.getElementById('expenseSlider');
-  slider.value = Math.min(parseFloat(slider.max), amt);
-  document.getElementById('expenseInput').value = amt;
+  const errEl = document.getElementById('expenseValidationError');
+  if (amt > 0) {
+    slider.value = Math.min(parseFloat(slider.max), amt);
+    document.getElementById('expenseInput').value = amt;
+    if (errEl) errEl.classList.add('hidden');
+  } else {
+    document.getElementById('expenseInput').value = '';
+  }
 
   const mo = state.expense_frequency === 'monthly' ? amt : amt / 12;
   const yr = state.expense_frequency === 'annual' ? amt : amt * 12;
-  document.getElementById('expenseSummaryBadge').textContent = `${formatInrCompact(mo)}/mo (${formatInrCompact(yr)}/yr)`;
+  const varNote = state.expense_variance_pct > 0 ? ` (±${state.expense_variance_pct}%)` : '';
+  document.getElementById('expenseSummaryBadge').textContent = `${formatInrCompact(mo)}/mo (${formatInrCompact(yr)}/yr)${varNote}`;
+}
+
+function updateExpenseVariance(val) {
+  const v = Math.max(0, Math.min(100, parseFloat(val) || 0));
+  state.expense_variance_pct = v;
+  const inp = document.getElementById('expenseVarianceInput');
+  if (inp) inp.value = v > 0 ? v : '';
+  updateExpense(state.expense_amount);
+}
+
+function _resolveInputToAge(rawVal, baseAge, defaultAge) {
+  const str = String(rawVal !== undefined && rawVal !== null ? rawVal : '').trim();
+  if (str === '') return defaultAge;
+  const num = parseInt(str, 10);
+  if (isNaN(num) || num < 0) return defaultAge;
+  return num >= baseAge ? num : baseAge + num;
+}
+
+function syncGoalFormDefaults(forceStartToCurrentAge = false) {
+  const baseAge = state.current_age || 38;
+  const planEndAge = state.life_expectancy || 90;
+  const yEl = document.getElementById('newKnownYears');
+  const sEl = document.getElementById('newKnownStartYear');
+  const eEl = document.getElementById('newKnownEndYear');
+  const nEl = document.getElementById('newKnownEveryNYears');
+
+  if (yEl && (yEl.value === '' || forceStartToCurrentAge)) yEl.value = String(baseAge);
+  if (sEl && (sEl.value === '' || forceStartToCurrentAge)) sEl.value = String(baseAge);
+  if (eEl && (eEl.value === '' || parseInt(eEl.value, 10) < baseAge)) eEl.value = String(planEndAge);
+  if (nEl && nEl.value === '') nEl.value = '3';
+}
+
+function computeGoalOccurrences(item) {
+  const baseAge = state.current_age || 38;
+  const planEndAge = state.life_expectancy || 90;
+  const planEndOffset = Math.max(1, planEndAge - baseAge);
+  if (!item.is_recurring) {
+    if (item.start_age !== undefined && item.start_age !== null) {
+      return [Math.max(0, item.start_age - baseAge)];
+    }
+    return [item.years_from_now !== undefined ? item.years_from_now : item.start_year || 0];
+  }
+  const sAge =
+    item.start_age !== undefined && item.start_age !== null
+      ? Math.max(baseAge, parseInt(item.start_age, 10) || baseAge)
+      : baseAge + Math.max(0, parseInt(item.start_year, 10) || 0);
+  let eAge = planEndAge;
+  if (item.end_age !== undefined && item.end_age !== null && item.end_age !== '') {
+    eAge = Math.max(sAge, parseInt(item.end_age, 10) || planEndAge);
+  } else if (item.end_year !== undefined && item.end_year !== null && item.end_year !== '') {
+    const rawEYr = parseInt(item.end_year, 10);
+    eAge = Math.max(sAge, rawEYr >= baseAge ? rawEYr : baseAge + Math.min(planEndOffset, rawEYr));
+  }
+  const step = Math.max(1, parseInt(item.every_n_years, 10) || 3);
+  const yrs = [];
+  for (let age = sAge; age <= eAge; age += step) {
+    yrs.push(Math.max(0, age - baseAge));
+  }
+  return yrs;
+}
+
+function setGoalFormMode(isRecurring) {
+  state.goal_form_is_recurring = Boolean(isRecurring);
+  const btnOne = document.getElementById('btnGoalModeOneOff');
+  const btnRec = document.getElementById('btnGoalModeRecurring');
+  const oneBox = document.getElementById('oneOffYearBox');
+  const recBox = document.getElementById('recurringFieldsBox');
+
+  if (state.goal_form_is_recurring) {
+    if (btnRec) btnRec.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white transition';
+    if (btnOne) btnOne.className = 'px-3 py-1 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition';
+    if (oneBox) oneBox.classList.add('hidden');
+    if (recBox) recBox.classList.remove('hidden');
+  } else {
+    if (btnOne) btnOne.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white transition';
+    if (btnRec) btnRec.className = 'px-3 py-1 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition';
+    if (recBox) recBox.classList.add('hidden');
+    if (oneBox) oneBox.classList.remove('hidden');
+  }
+  syncGoalFormDefaults();
+  updateGoalRepeatPreview();
+}
+
+function selectGoalQuickLabel(tag, isRecurring, lakhs, variancePct, startYr, endYr, everyNYrs) {
+  const baseAge = state.current_age || 38;
+  const planEndAge = state.life_expectancy || 90;
+  document.getElementById('newKnownTag').value = tag;
+  if (lakhs !== undefined) document.getElementById('newKnownLakhs').value = lakhs;
+  const resolvedStartAge = startYr !== undefined ? _resolveInputToAge(startYr, baseAge, baseAge) : baseAge;
+  const resolvedEndAge =
+    endYr !== undefined && endYr !== '' ? _resolveInputToAge(endYr, baseAge, planEndAge) : planEndAge;
+  document.getElementById('newKnownYears').value = String(resolvedStartAge);
+  const varEl = document.getElementById('newKnownVariance');
+  const sEl = document.getElementById('newKnownStartYear');
+  const eEl = document.getElementById('newKnownEndYear');
+  const nEl = document.getElementById('newKnownEveryNYears');
+  if (varEl) varEl.value = isRecurring && variancePct !== undefined ? variancePct : '';
+  if (sEl) sEl.value = String(resolvedStartAge);
+  if (eEl) eEl.value = String(resolvedEndAge);
+  if (nEl) nEl.value = String(everyNYrs !== undefined ? everyNYrs : 3);
+  setGoalFormMode(isRecurring);
+}
+
+function updateGoalRepeatPreview() {
+  const previewEl = document.getElementById('goalRepeatPreview');
+  if (!previewEl) return;
+
+  syncGoalFormDefaults();
+  const tag = (document.getElementById('newKnownTag').value || '').trim();
+  const rawLakhs = parseFloat(document.getElementById('newKnownLakhs').value);
+  const baseAge = state.current_age || 38;
+  const planEndAge = state.life_expectancy || 90;
+
+  const displayTag = tag || 'Planned Expense';
+  const amtStr = !isNaN(rawLakhs) && rawLakhs > 0 ? formatInrCompact(rawLakhs * 100000) : 'entered amount';
+
+  if (!state.goal_form_is_recurring) {
+    const targetAge = _resolveInputToAge(document.getElementById('newKnownYears').value, baseAge, baseAge);
+    const yrsFromNow = Math.max(0, targetAge - baseAge);
+    const startDesc =
+      yrsFromNow === 0
+        ? `starts immediately at Age ${targetAge}`
+        : `starts in ${yrsFromNow} ${yrsFromNow === 1 ? 'year' : 'years'} at Age ${targetAge}`;
+    previewEl.textContent = `📌 ${displayTag}: One-off expense of ${amtStr} (today's ₹) — ${startDesc} (occurs 1 time).`;
+  } else {
+    const startAge = _resolveInputToAge((document.getElementById('newKnownStartYear') || {}).value, baseAge, baseAge);
+    const endAge = Math.max(
+      startAge,
+      _resolveInputToAge((document.getElementById('newKnownEndYear') || {}).value, baseAge, planEndAge)
+    );
+    const step = Math.max(1, parseInt((document.getElementById('newKnownEveryNYears') || {}).value, 10) || 3);
+    const varPct = Math.max(0, parseFloat((document.getElementById('newKnownVariance') || {}).value) || 0);
+    const varLabel = varPct > 0 ? ` ±${varPct}%` : '';
+    const yrs = computeGoalOccurrences({
+      is_recurring: true,
+      start_age: startAge,
+      end_age: endAge,
+      every_n_years: step,
+    });
+    const count = yrs.length;
+    const yrsFromNow = Math.max(0, startAge - baseAge);
+    const timingDesc =
+      yrsFromNow === 0
+        ? `starts immediately at Age ${startAge} and repeats between Age ${startAge} and Age ${endAge}`
+        : `starts in ${yrsFromNow} ${yrsFromNow === 1 ? 'year' : 'years'} between Age ${startAge} and Age ${endAge}`;
+    previewEl.textContent = `🔁 ${displayTag}: ${timingDesc}, every ${step} ${step === 1 ? 'year' : 'years'} (${count} ${count === 1 ? 'time' : 'times'} total) • ${amtStr}${varLabel} each time.`;
+  }
 }
 
 function renderKnownExpensesList() {
@@ -238,20 +593,47 @@ function renderKnownExpensesList() {
   if (!container) return;
 
   if (!state.known_future_expenses.length) {
-    container.innerHTML = `<span class="text-[11px] text-slate-500 italic">No planned future goal expenses configured. Add one above (e.g. Education, Marriage).</span>`;
+    container.innerHTML = `<span class="text-[11px] text-slate-500 italic">No planned future expenses added yet (optional). Choose a quick label above (Education, Marriage, Vehicle, Home Improvement, Vacation) to add one.</span>`;
     return;
   }
 
+  const baseAge = state.current_age || 38;
   container.innerHTML = state.known_future_expenses
     .map((item, idx) => {
-      const targetAge = state.current_age + item.years_from_now;
+      const occ = computeGoalOccurrences(item);
+      const count = occ.length;
+      if (item.is_recurring) {
+        const sAge = baseAge + occ[0];
+        const eAge = baseAge + occ[occ.length - 1];
+        const yrsFromNow = Math.max(0, sAge - baseAge);
+        const startText =
+          yrsFromNow === 0
+            ? `starts immediately at Age ${sAge} (Age ${sAge}–${eAge})`
+            : `starts in ${yrsFromNow} ${yrsFromNow === 1 ? 'yr' : 'yrs'} between Age ${sAge} and Age ${eAge}`;
+        const varTxt = item.variance_pct > 0 ? ` ±${item.variance_pct}%` : '';
+        return `
+          <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs">
+            <span class="font-bold text-emerald-300">🔁 ${item.event_tag}</span>
+            <span class="text-slate-200 font-semibold">${startText}, every ${item.every_n_years} yrs (${count}x)</span>
+            <span class="font-extrabold text-white">${formatInrCompact(item.amount_today_inr)}${varTxt} today</span>
+            <button type="button" onclick="removeKnownExpense(${idx})"
+              class="ml-1 text-slate-400 hover:text-rose-400 font-bold" title="Remove Goal">✕</button>
+          </div>
+        `;
+      }
+      const targetAge = item.start_age !== undefined && item.start_age !== null ? item.start_age : baseAge + (item.years_from_now || 0);
+      const yrsFromNow = Math.max(0, targetAge - baseAge);
+      const startText =
+        yrsFromNow === 0
+          ? `starts immediately at Age ${targetAge}`
+          : `starts in ${yrsFromNow} ${yrsFromNow === 1 ? 'yr' : 'yrs'} at Age ${targetAge}`;
       return `
         <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-950/70 border border-indigo-500/40 text-xs">
           <span class="font-bold text-indigo-300">🎯 ${item.event_tag}</span>
-          <span class="text-slate-300">Yr ${item.years_from_now} (Age ${targetAge})</span>
+          <span class="text-slate-300">${startText} (1x)</span>
           <span class="font-extrabold text-white">${formatInrCompact(item.amount_today_inr)} today</span>
           <button type="button" onclick="removeKnownExpense(${idx})"
-            class="ml-1 text-slate-400 hover:text-rose-400 font-bold" title="Remove Event">✕</button>
+            class="ml-1 text-slate-400 hover:text-rose-400 font-bold" title="Remove Goal">✕</button>
         </div>
       `;
     })
@@ -259,30 +641,66 @@ function renderKnownExpensesList() {
 }
 
 function addKnownExpenseFromInputs() {
-  const tagEl = document.getElementById('newKnownTag');
-  const yrsEl = document.getElementById('newKnownYears');
-  const lakhsEl = document.getElementById('newKnownLakhs');
+  syncGoalFormDefaults();
+  const tag = (document.getElementById('newKnownTag').value || 'Planned Goal').trim();
+  const lakhs = Math.max(0.1, parseFloat(document.getElementById('newKnownLakhs').value) || 5);
+  const baseAge = state.current_age || 38;
+  const planEndAge = state.life_expectancy || 90;
 
-  const tag = (tagEl.value || 'Planned Goal').trim();
-  const years = Math.max(1, Math.min(60, parseInt(yrsEl.value, 10) || 5));
-  const lakhs = Math.max(0.1, parseFloat(lakhsEl.value) || 10);
-
-  state.known_future_expenses.push({
-    years_from_now: years,
-    amount_today_inr: Math.round(lakhs * 100000),
-    event_tag: tag,
-  });
-  state.known_future_expenses.sort((a, b) => a.years_from_now - b.years_from_now);
+  if (!state.goal_form_is_recurring) {
+    const targetAge = Math.max(baseAge, _resolveInputToAge(document.getElementById('newKnownYears').value, baseAge, baseAge));
+    const years = Math.max(1, Math.min(75, targetAge - baseAge || 1));
+    state.known_future_expenses.push({
+      event_tag: tag,
+      amount_today_inr: Math.round(lakhs * 100000),
+      is_recurring: false,
+      years_from_now: years,
+      start_year: years,
+      end_year: years,
+      start_age: targetAge,
+      end_age: targetAge,
+      every_n_years: 1,
+      variance_pct: 0,
+    });
+  } else {
+    const varPct = Math.max(0, Math.min(100, parseFloat((document.getElementById('newKnownVariance') || {}).value) || 0));
+    const startAge = Math.max(baseAge, _resolveInputToAge((document.getElementById('newKnownStartYear') || {}).value, baseAge, baseAge));
+    const endAge = Math.max(
+      startAge,
+      _resolveInputToAge((document.getElementById('newKnownEndYear') || {}).value, baseAge, planEndAge)
+    );
+    const step = Math.max(1, Math.min(30, parseInt((document.getElementById('newKnownEveryNYears') || {}).value, 10) || 3));
+    const sYr = Math.max(1, Math.min(75, startAge - baseAge || 1));
+    const eYr = Math.max(sYr, Math.min(75, endAge - baseAge || sYr));
+    state.known_future_expenses.push({
+      event_tag: tag,
+      amount_today_inr: Math.round(lakhs * 100000),
+      is_recurring: true,
+      years_from_now: sYr,
+      start_year: sYr,
+      end_year: eYr,
+      start_age: startAge,
+      end_age: endAge,
+      every_n_years: step,
+      variance_pct: varPct,
+    });
+  }
+  state.known_future_expenses.sort((a, b) => (a.start_age || a.start_year || 0) - (b.start_age || b.start_year || 0));
   renderKnownExpensesList();
 }
 
-function addPresetKnownExpense(tag, years, lakhs) {
+function addPresetKnownExpense(tag, years, lakhs, isRecurring = false, variancePct = 0, endYear = null, everyNYears = 1) {
   state.known_future_expenses.push({
-    years_from_now: years,
-    amount_today_inr: Math.round(lakhs * 100000),
     event_tag: tag,
+    amount_today_inr: Math.round(lakhs * 100000),
+    is_recurring: Boolean(isRecurring),
+    years_from_now: years,
+    start_year: years,
+    end_year: endYear || years,
+    every_n_years: everyNYears,
+    variance_pct: variancePct,
   });
-  state.known_future_expenses.sort((a, b) => a.years_from_now - b.years_from_now);
+  state.known_future_expenses.sort((a, b) => (a.start_year || a.years_from_now) - (b.start_year || b.years_from_now));
   renderKnownExpensesList();
 }
 
@@ -299,26 +717,28 @@ function toggleAdvancedDrawer() {
 }
 
 function updateAdvSettings() {
-  state.base_inflation_rate = parseFloat(document.getElementById('infSlider').value);
-  state.lifestyle_inflation_rate = parseFloat(document.getElementById('lifeInfSlider').value);
+  state.lifestyle_inflation_rate = parseFloat(document.getElementById('lifeInfSlider').value) || 0;
+  const minPlanAge = (state.current_age || 38) + 5;
   state.life_expectancy = Math.max(
-    state.current_age + 5,
-    parseInt(document.getElementById('targetAgeSlider').value, 10)
+    minPlanAge,
+    parseInt(document.getElementById('targetAgeSlider').value, 10) || 90
   );
 
-  // Tax & Periodic Rebalancing
-  state.fixed_income_tax_rate = parseFloat(document.getElementById('fiTaxSlider').value);
-  state.equity_tax_rate = parseFloat(document.getElementById('eqTaxSlider').value);
+  const taxSlider = document.getElementById('taxDragSlider');
+  if (taxSlider) {
+    state.tax_drag_rate = parseFloat(taxSlider.value) || 10.0;
+  }
   state.rebalance_enabled = document.getElementById('rebalanceEnabledChk').checked;
   state.rebalance_frequency_years = parseInt(document.getElementById('rebalanceFreqSlider').value, 10) || 2;
+  const passiveInfSlider = document.getElementById('passiveInfFreqSlider');
+  if (passiveInfSlider) {
+    state.passive_income_inflation_interval_years = Math.max(1, parseInt(passiveInfSlider.value, 10) || 1);
+  }
+  const passiveInfText = document.getElementById('passiveInfFreqText');
+  if (passiveInfText) {
+    passiveInfText.textContent = state.passive_income_inflation_interval_years;
+  }
 
-  // Home Improvement
-  state.home_improvement_enabled = document.getElementById('homeImpEnabledChk').checked;
-  state.home_improvement_pct_of_property = Math.max(0, parseFloat(document.getElementById('homeImpPctInput').value) || 0);
-  state.home_improvement_variance_pct = Math.max(0, parseFloat(document.getElementById('homeImpVarInput').value) || 0);
-  state.home_improvement_interval_years = Math.max(1, parseInt(document.getElementById('homeImpIntervalInput').value, 10) || 5);
-
-  // Random Expense (Shock)
   state.random_expense_enabled = document.getElementById('randExpEnabledChk').checked;
   const randLakhs = Math.max(0, parseFloat(document.getElementById('randExpBaseLakhsInput').value) || 0);
   state.random_expense_base_inr = Math.round(randLakhs * 100000);
@@ -328,30 +748,54 @@ function updateAdvSettings() {
     Math.min(100, parseFloat(document.getElementById('randExpProbInput').value) || 0)
   );
 
-  state.property_mode = document.getElementById('propModeSelect').value;
-  state.sampling_method = document.getElementById('samplingSelect').value;
-  state.num_simulations = parseInt(document.getElementById('numSimsSelect').value, 10);
+  const propModeEl = document.getElementById('propModeSelect');
+  if (propModeEl && propModeEl.value) {
+    state.property_mode = propModeEl.value;
+  }
+  state.sampling_method = document.getElementById('samplingSelect').value || 'iid_bootstrap';
+  state.num_simulations = parseInt(document.getElementById('numSimsSelect').value, 10) || 2500;
 
-  document.getElementById('infValText').textContent = state.base_inflation_rate.toFixed(1);
   document.getElementById('lifeInfValText').textContent = state.lifestyle_inflation_rate.toFixed(2);
   document.getElementById('targetAgeValText').textContent = state.life_expectancy;
-  document.getElementById('fiTaxValText').textContent = state.fixed_income_tax_rate.toFixed(1);
-  document.getElementById('eqTaxValText').textContent = state.equity_tax_rate.toFixed(1);
+  const taxValEl = document.getElementById('taxDragValText');
+  if (taxValEl) taxValEl.textContent = state.tax_drag_rate.toFixed(1);
   document.getElementById('rebalanceFreqText').textContent = state.rebalance_frequency_years;
 
-  document.getElementById('advSummaryFiTax').textContent = `${state.fixed_income_tax_rate.toFixed(1)}%`;
-  document.getElementById('advSummaryEqTax').textContent = `${state.equity_tax_rate.toFixed(1)}%`;
+  const advTaxEl = document.getElementById('advSummaryTaxDrag');
+  if (advTaxEl) advTaxEl.textContent = `${state.tax_drag_rate.toFixed(1)}%`;
   document.getElementById('advSummaryRebal').textContent = state.rebalance_enabled
     ? `Every ${state.rebalance_frequency_years} yrs`
     : 'Off';
-  document.getElementById('advSummaryInf').textContent = `${state.base_inflation_rate.toFixed(1)}%`;
   document.getElementById('advSummaryLife').textContent = `+${state.lifestyle_inflation_rate.toFixed(2)}%`;
+  const advAgeEl = document.getElementById('advSummaryTargetAge');
+  if (advAgeEl) advAgeEl.textContent = state.life_expectancy;
 
+  syncGoalFormDefaults();
   renderKnownExpensesList();
+  updateGoalRepeatPreview();
 }
 
-// ==================== RUN RANDOM HISTORICAL SIMULATIONS ====================
+// ==================== RUN HISTORICAL SIMULATIONS (DECODE MY FINANCIAL OUTLOOK) ====================
 async function triggerSimulationRun() {
+  if (!isStep1Complete()) {
+    const err1 = document.getElementById('step1ValidationError');
+    if (err1) err1.classList.remove('hidden');
+    alert('Please answer Current Age and Medical Insurance coverage in Step 1 before proceeding.');
+    returnToWizard(1);
+    return;
+  }
+  const effectiveAge = state.current_age;
+  const effectiveMedIns = state.has_medical_insurance;
+  const effectiveExpense = state.expense_amount || parseFloat(document.getElementById('expenseInput').value) || 0;
+  if (effectiveExpense <= 0) {
+    const errEl = document.getElementById('expenseValidationError');
+    if (errEl) errEl.classList.remove('hidden');
+    alert('Please enter your living expenses in Step 5 before running the simulation.');
+    returnToWizard(5);
+    return;
+  }
+  const totalLakhs = Math.max(0, state.corpus_lakhs);
+
   document.getElementById('wizardContainer').classList.add('hidden');
   document.getElementById('resultsContainer').classList.add('hidden');
   const progressBox = document.getElementById('simulationProgressBox');
@@ -362,45 +806,58 @@ async function triggerSimulationRun() {
   const title = document.getElementById('simProgressTitle');
 
   bar.style.width = '15%';
-  title.textContent = `Running ${state.num_simulations.toLocaleString()} Simulations (2006–2025 Market Data)...`;
+  title.textContent = `Decoding Your Financial Outlook Across ${state.num_simulations.toLocaleString()} Market Scenarios...`;
 
-  // Animate random Indian historical years (2006–2025) being drawn while the simulation runs
-  const sampleYearsPool = [
-    2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015,
-    2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025,
-  ];
+  const curYr = new Date().getFullYear() - 1;
+  const sampleYearsPool = Array.from({ length: 20 }, (_, i) => curYr - 19 + i);
+
   let progressPct = 20;
   const animInterval = setInterval(() => {
     progressPct = Math.min(92, progressPct + 18);
     bar.style.width = `${progressPct}%`;
     const drawn = Array.from({ length: 6 }, () => sampleYearsPool[Math.floor(Math.random() * sampleYearsPool.length)]);
-    ticker.textContent = `Sampling last 20 yrs of Indian market data: ${drawn.join(' → ')}...`;
+    ticker.textContent = `Sampling last 20 yrs of Indian market history: ${drawn.join(' → ')}...`;
   }, 110);
 
+  const eqVal = Math.max(0, state.equity_lakhs * 100000);
+  const fiVal = Math.max(0, state.fixed_income_lakhs * 100000);
+  const reVal = Math.max(0, state.real_estate_lakhs * 100000);
+  const caVal = Math.max(0, state.cash_lakhs * 100000);
+
   const payload = {
-    current_age: state.current_age,
-    life_expectancy: state.life_expectancy,
-    has_medical_insurance: state.has_medical_insurance,
-    total_corpus: state.corpus_lakhs * 100000,
-    equity_pct: state.equity_pct,
-    fixed_income_pct: state.fixed_income_pct,
-    property_pct: state.property_pct,
-    expense_amount: state.expense_amount,
+    current_age: effectiveAge,
+    life_expectancy: Math.max(effectiveAge + 5, state.life_expectancy),
+    has_medical_insurance: effectiveMedIns,
+    equity_value: eqVal,
+    fixed_income_value: fiVal,
+    real_estate_value: reVal,
+    cash_value: caVal,
+    total_corpus: totalLakhs * 100000,
+    job_monthly_income: state.job_monthly_income,
+    job_income_years: state.job_income_years,
+    job_income_until_age: state.job_income_until_age,
+    job_income_growth_pct: state.job_income_growth_pct,
+    job_income_growth_max_pct: state.job_income_growth_max_pct,
+    job_income_growth_range: state.job_income_growth_range || null,
+    rental_monthly_income: state.rental_monthly_income,
+    other_passive_monthly_income: state.other_passive_monthly_income,
+    passive_income_inflation_interval_years: state.passive_income_inflation_interval_years,
+    equity_sip_monthly: state.equity_sip_monthly,
+    equity_sip_stepup_pct: state.equity_sip_stepup_pct,
+    fixed_income_sip_monthly: state.fixed_income_sip_monthly,
+    fixed_income_sip_stepup_pct: state.fixed_income_sip_stepup_pct,
+    sip_years: null,
+    expense_amount: effectiveExpense,
     expense_frequency: state.expense_frequency,
-    base_inflation_rate: state.base_inflation_rate,
+    expense_variance_pct: state.expense_variance_pct,
     lifestyle_inflation_rate: state.lifestyle_inflation_rate,
     post_retirement_expense_multiplier: 100.0,
     property_mode: state.property_mode,
     property_rental_yield: 2.5,
     property_liquidation_haircut: 10.0,
-    fixed_income_tax_rate: state.fixed_income_tax_rate,
-    equity_tax_rate: state.equity_tax_rate,
+    tax_drag_rate: state.tax_drag_rate,
     rebalance_enabled: state.rebalance_enabled,
     rebalance_frequency_years: state.rebalance_frequency_years,
-    home_improvement_enabled: state.home_improvement_enabled,
-    home_improvement_interval_years: state.home_improvement_interval_years,
-    home_improvement_pct_of_property: state.home_improvement_pct_of_property,
-    home_improvement_variance_pct: state.home_improvement_variance_pct,
     random_expense_enabled: state.random_expense_enabled,
     random_expense_base_inr: state.random_expense_base_inr,
     random_expense_variance_pct: state.random_expense_variance_pct,
@@ -409,7 +866,7 @@ async function triggerSimulationRun() {
     num_simulations: state.num_simulations,
     sampling_method: state.sampling_method,
     use_historical_inflation_volatility: true,
-    seed: null, // Always draw a fresh random seed!
+    seed: null,
   };
 
   try {
@@ -428,7 +885,7 @@ async function triggerSimulationRun() {
     if (!res.ok) {
       const err = await res.json();
       alert('Simulation Error: ' + JSON.stringify(err.detail || err));
-      returnToWizard(3);
+      returnToWizard(5);
       return;
     }
 
@@ -442,33 +899,68 @@ async function triggerSimulationRun() {
   } catch (e) {
     clearInterval(animInterval);
     console.error(e);
-    returnToWizard(3);
+    returnToWizard(5);
   }
 }
 
 // ==================== RENDER VISUAL RESULTS ====================
 function renderSimulationResults(data) {
-  const { inputs_summary, verdict, longevity_stats, simulation_meta } = data;
-  const maxSimYrs = inputs_summary.max_simulated_years;
-  const targetYrs = inputs_summary.target_horizon_years;
+  const { inputs_summary, simulation_meta, retirement_readiness } = data;
 
-  // Top summary pills
   document.getElementById('summaryPillAge').textContent = `Age ${inputs_summary.current_age} → ${inputs_summary.life_expectancy}`;
-  document.getElementById('summaryPillCorpus').textContent = `Corpus: ${inputs_summary.total_corpus_formatted}`;
-  document.getElementById('summaryPillSplit').textContent =
-    `${inputs_summary.allocation.equity_pct}% Eq / ${inputs_summary.allocation.fixed_income_pct}% Debt / ${inputs_summary.allocation.property_pct}% Prop`;
+  document.getElementById('summaryPillCorpus').textContent = `Total Wealth: ${inputs_summary.total_corpus_formatted}`;
+  const liqPct = inputs_summary.liquid_pct !== undefined ? inputs_summary.liquid_pct : (100 - inputs_summary.allocation.property_pct);
+  document.getElementById('summaryPillSplit').textContent = `${liqPct}% Liquid / ${inputs_summary.allocation.property_pct}% Property`;
   document.getElementById('summaryPillExpense').textContent = `${inputs_summary.monthly_expense_formatted}/mo`;
 
   const medPill = document.getElementById('summaryPillMedIns');
   if (medPill) {
-    medPill.textContent = inputs_summary.has_medical_insurance ? '🏥 Med Ins: Yes' : '⚠️ Med Ins: No';
+    medPill.textContent = inputs_summary.has_medical_insurance ? '🏥 Health Cover: Yes' : '⚠️ Health Cover: No';
     medPill.className = inputs_summary.has_medical_insurance
       ? 'px-2.5 py-1 rounded-lg bg-slate-800 text-teal-300 font-semibold'
       : 'px-2.5 py-1 rounded-lg bg-rose-950 text-rose-300 border border-rose-500/30 font-semibold';
   }
-  document.getElementById('summaryPillSeed').textContent = `Random Seed #${simulation_meta.seed_used}`;
+  document.getElementById('summaryPillSeed').textContent = `Sample #${simulation_meta.seed_used}`;
 
-  // Verdict & Headline
+  const defaultSelectedAge =
+    retirement_readiness && retirement_readiness.evaluated_retirement_age !== undefined
+      ? retirement_readiness.evaluated_retirement_age
+      : inputs_summary.current_age;
+  state.selected_retirement_age = defaultSelectedAge;
+
+  applyOutcomeViewForAge(defaultSelectedAge);
+}
+
+function selectCandidateRetirementAge(age) {
+  const numericAge = parseInt(age, 10);
+  if (isNaN(numericAge) || !state.result) return;
+  state.selected_retirement_age = numericAge;
+  applyOutcomeViewForAge(numericAge);
+}
+
+function applyOutcomeViewForAge(age) {
+  const data = state.result;
+  if (!data) return;
+
+  const { inputs_summary, retirement_readiness } = data;
+  const maxSimYrs = inputs_summary.max_simulated_years;
+  const targetYrs = inputs_summary.target_horizon_years;
+
+  const outcomesMap = (retirement_readiness && retirement_readiness.outcomes_by_age) || {};
+  const ageOutcome = outcomesMap[String(age)];
+
+  if (ageOutcome) {
+    data.verdict = ageOutcome.verdict || data.verdict;
+    data.longevity_stats = ageOutcome.longevity_stats || data.longevity_stats;
+    data.trajectories = ageOutcome.trajectories || data.trajectories;
+    data.chart_events = ageOutcome.chart_events || data.chart_events;
+    data.survival_curve = ageOutcome.survival_curve || data.survival_curve;
+    data.notable_runs = ageOutcome.notable_runs || data.notable_runs;
+  }
+
+  const { verdict, longevity_stats } = data;
+
+  // Verdict & Success Rate
   const badge = document.getElementById('resVerdictBadge');
   badge.textContent = verdict.badge;
   const badgeStyle = {
@@ -479,30 +971,174 @@ function renderSimulationResults(data) {
   };
   badge.className = `px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${badgeStyle[verdict.status] || badgeStyle.borderline}`;
 
-  document.getElementById('resSimCountLabel').textContent =
-    `${simulation_meta.num_simulations.toLocaleString()} random simulations (${simulation_meta.historical_data_period || '2006–2025'}) • ${longevity_stats.success_probability_pct}% survived past Age ${inputs_summary.life_expectancy}`;
+  const hasMultiAges =
+    retirement_readiness &&
+    Array.isArray(retirement_readiness.candidate_retirement_ages) &&
+    retirement_readiness.candidate_retirement_ages.length > 1;
+  document.getElementById('resSimCountLabel').textContent = hasMultiAges
+    ? `Success Rate at Age ${age}: ${longevity_stats.success_probability_pct}% (Target: 85%)`
+    : `Success Rate: ${longevity_stats.success_probability_pct}% (Target: 85%)`;
   document.getElementById('resHeadline').textContent = verdict.headline;
   document.getElementById('resRecommendation').textContent = verdict.recommendation;
 
-  // Percentile Cards: Only P10 (Unlucky 10th) and P50 (Median)
-  const fmtYrs = (y) => (y >= maxSimYrs - 0.5 ? `${targetYrs}+ yrs` : `${y.toFixed(1)} yrs`);
-  const fmtAge = (y, a) => (y >= maxSimYrs - 0.5 ? `Age ${inputs_summary.life_expectancy}+ (Sustained)` : `Depletes at Age ${Math.round(a)}`);
+  // Render Year-by-Year Retirement Age Finder Bar Chart
+  renderRetirementAgeProgression(retirement_readiness);
 
-  ['p10', 'p50'].forEach((k) => {
+  // Outcome Cards: MEDIAN CASE First, WORST CASE Second — Focus on Future Age ("Lasts past 90+", "Lasts until 78")
+  const fmtAgePrimary = (y, a) =>
+    y >= maxSimYrs - 0.5 ? `Lasts past ${inputs_summary.life_expectancy}+` : `Lasts until ${Math.round(a)}`;
+  const fmtAgeSub = (y, a) =>
+    y >= maxSimYrs - 0.5 ? `Sustains past Age ${inputs_summary.life_expectancy}` : `Funds run out at Age ${Math.round(a)}`;
+
+  ['p50', 'p10'].forEach((k) => {
     const yrs = longevity_stats.percentiles_years[k];
-    const age = longevity_stats.depletion_ages[k];
+    const ageVal = longevity_stats.depletion_ages[k];
     const upper = k.toUpperCase();
-    const yrsEl = document.getElementById(`card${upper}Yrs`);
     const ageEl = document.getElementById(`card${upper}Age`);
-    if (yrsEl) yrsEl.textContent = fmtYrs(yrs);
-    if (ageEl) ageEl.textContent = fmtAge(yrs, age);
+    const yrsEl = document.getElementById(`card${upper}Yrs`);
+    if (ageEl) ageEl.textContent = fmtAgePrimary(yrs, ageVal);
+    if (yrsEl) yrsEl.textContent = fmtAgeSub(yrs, ageVal);
   });
 
-  // Render Charts
+  // Render Charts (Wealth Trajectory + Success Rate by Age) & Table for the selected retirement age
   renderSpaghettiAndPercentileChart();
-  renderHistogramChart(data);
   renderSurvivalChart(data);
   populateNotableRunsDropdown(data);
+}
+
+function renderRetirementAgeProgression(readiness) {
+  const box = document.getElementById('retirementAgeProgressionBox');
+  if (!box) return;
+
+  if (!readiness || !Array.isArray(readiness.candidate_retirement_ages) || readiness.candidate_retirement_ages.length <= 1) {
+    box.classList.add('hidden');
+    return;
+  }
+
+  box.classList.remove('hidden');
+  const candidates = readiness.candidate_retirement_ages;
+  const bestAge = readiness.can_retire_at_age;
+  const fallbackAge = readiness.evaluated_retirement_age || candidates[candidates.length - 1].retirement_age;
+  const recommendedAge = bestAge !== null && bestAge !== undefined ? bestAge : fallbackAge;
+  const selectedAge = state.selected_retirement_age !== null ? state.selected_retirement_age : recommendedAge;
+
+  const recBadge = document.getElementById('recommendedRetireAgeBadge');
+  if (recBadge) {
+    const recItem = candidates.find((c) => c.retirement_age === recommendedAge) || candidates[candidates.length - 1];
+    if (bestAge !== null && bestAge !== undefined) {
+      const yrText = recItem.retire_in_years === 0 ? 'Retire Today' : `in ${recItem.retire_in_years} yr${recItem.retire_in_years > 1 ? 's' : ''}`;
+      recBadge.textContent = `★ Recommended Retirement Age: Age ${recommendedAge} (${yrText} • ${recItem.success_rate_pct}% Success Rate)`;
+      recBadge.className = 'px-3 py-1 rounded-xl text-xs font-extrabold bg-emerald-500/20 border border-emerald-500/50 text-emerald-300';
+    } else {
+      recBadge.textContent = `Best Within Horizon: Age ${recommendedAge} (${recItem.success_rate_pct}% Success Rate — Below 85% Target)`;
+      recBadge.className = 'px-3 py-1 rounded-xl text-xs font-extrabold bg-amber-500/20 border border-amber-500/50 text-amber-300';
+    }
+  }
+
+  const selLabel = document.getElementById('selectedRetirementAgeLabel');
+  if (selLabel) {
+    if (selectedAge === recommendedAge) {
+      selLabel.textContent = `Viewing: Age ${selectedAge} (Recommended)`;
+    } else if (selectedAge < recommendedAge) {
+      const diff = recommendedAge - selectedAge;
+      selLabel.textContent = `Viewing: Age ${selectedAge} (${diff} yr${diff > 1 ? 's' : ''} earlier)`;
+    } else {
+      const diff = selectedAge - recommendedAge;
+      selLabel.textContent = `Viewing: Age ${selectedAge} (+${diff} yr${diff > 1 ? 's' : ''} later)`;
+    }
+  }
+
+  // Render Clean Retirement Age Finder Bar Chart (X-axis: Age, Y-axis: Success Rate, no redundant bar text)
+  const chartEl = document.getElementById('retirementAgeChart');
+  if (chartEl) {
+    const ctx = chartEl.getContext('2d');
+    if (charts.retirementAge) charts.retirementAge.destroy();
+
+    const labels = candidates.map((item) => String(item.retirement_age));
+    const values = candidates.map((item) => item.success_rate_pct);
+    const bgColors = candidates.map((item) => {
+      if (item.retirement_age === selectedAge) {
+        return item.meets_target ? '#10b981' : '#6366f1';
+      }
+      if (item.retirement_age === bestAge) {
+        return 'rgba(16, 185, 129, 0.75)';
+      }
+      return item.meets_target ? 'rgba(16, 185, 129, 0.45)' : 'rgba(99, 102, 241, 0.42)';
+    });
+    const borderColors = candidates.map((item) => {
+      if (item.retirement_age === selectedAge) return '#ffffff';
+      if (item.retirement_age === bestAge) return '#34d399';
+      return 'transparent';
+    });
+
+    charts.retirementAge = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Success Rate (%)',
+            data: values,
+            backgroundColor: bgColors,
+            borderColor: borderColors,
+            borderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        targetLine: { value: 85, color: '#10b981', label: '85% Target' },
+        onClick: (_e, elements) => {
+          if (elements && elements.length > 0) {
+            const clicked = candidates[elements[0].index];
+            if (clicked) {
+              selectCandidateRetirementAge(clicked.retirement_age);
+            }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctxItem) => {
+                const c = candidates[ctxItem.dataIndex];
+                const recNote = c.retirement_age === bestAge ? ' (★ Recommended Age)' : '';
+                return `Success Rate: ${c.success_rate_pct}%${recNote}`;
+              },
+              afterBody: (items) => {
+                if (!items || !items.length) return [];
+                const c = candidates[items[0].dataIndex];
+                if (!c) return [];
+                const lines = [];
+                if (c.median_depletion_age !== undefined) {
+                  lines.push(`Median Case: Lasts until Age ${Math.round(c.median_depletion_age)}`);
+                }
+                if (c.worst_case_depletion_age !== undefined) {
+                  lines.push(`Worst Case: Lasts until Age ${Math.round(c.worst_case_depletion_age)}`);
+                }
+                lines.push('Click bar to inspect Median & Worst Case below');
+                return lines;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'Age', color: '#cbd5e1' },
+            ticks: { color: '#e2e8f0' },
+          },
+          y: {
+            min: 0,
+            max: 100,
+            title: { display: true, text: 'Success Rate', color: '#cbd5e1' },
+            ticks: { color: '#94a3b8', callback: (v) => `${v}%` },
+            grid: { color: 'rgba(51, 65, 85, 0.25)' },
+          },
+        },
+      },
+    });
+  }
 }
 
 function setCurveFocus(mode) {
@@ -534,7 +1170,7 @@ function switchChartScale(scale) {
   renderSpaghettiAndPercentileChart();
 }
 
-// ==================== CHART 1: MEDIAN (P50) & 10TH PERCENTILE (P10) WITH EVENT MARKERS & DYNAMIC AUTO-SCALING ====================
+// ==================== CHART 1: MEDIAN CASE vs WORST CASE WITH SEPARATE TOOLTIPS ====================
 function renderSpaghettiAndPercentileChart() {
   const data = state.result;
   if (!data) return;
@@ -546,33 +1182,35 @@ function renderSpaghettiAndPercentileChart() {
   const showP10 = focus === 'both' || focus === 'p10';
 
   const traj = isReal ? data.trajectories.real : data.trajectories.nominal;
-  const chartEvents = data.chart_events || { events_by_age: {}, known_expense_ages: [] };
-  const eventsByAge = chartEvents.events_by_age || {};
+  const chartEvents = data.chart_events || { events_by_age: {}, events_by_age_p50: {}, events_by_age_p10: {}, known_expense_ages: [] };
+  const eventsByAgeP50 = chartEvents.events_by_age_p50 || chartEvents.events_by_age || {};
+  const eventsByAgeP10 = chartEvents.events_by_age_p10 || chartEvents.events_by_age || {};
   const knownAgesSet = new Set(chartEvents.known_expense_ages || []);
 
-  // Populate #chartEventsStrip above the chart canvas
   const stripEl = document.getElementById('chartEventsStrip');
   if (stripEl) {
     const badges = [];
     const inp = data.inputs_summary || {};
     (inp.known_future_expenses || []).forEach((ev) => {
-      badges.push(
-        `<span class="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 font-semibold">🎯 ${ev.event_tag}: ${formatInrCompact(ev.amount_today_inr)} today @ Age ${inp.current_age + ev.years_from_now}</span>`
-      );
+      if (ev.is_recurring) {
+        badges.push(
+          `<span class="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 font-semibold">🔁 ${ev.event_tag}: ${formatInrCompact(ev.amount_today_inr)} every ${ev.every_n_years} yrs (Yr ${ev.start_year}–${ev.end_year})</span>`
+        );
+      } else {
+        badges.push(
+          `<span class="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 font-semibold">🎯 ${ev.event_tag}: ${formatInrCompact(ev.amount_today_inr)} today @ Age ${inp.current_age + ev.years_from_now}</span>`
+        );
+      }
     });
-    if (inp.home_improvement_enabled && inp.allocation && inp.allocation.property_pct > 0) {
-      badges.push(
-        `<span class="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">🏠 Home Improvement: ${inp.home_improvement_pct_of_property}% (±${inp.home_improvement_variance_pct}%) every ${inp.home_improvement_interval_years} yrs</span>`
-      );
-    }
     if (inp.random_expense_enabled) {
       badges.push(
         `<span class="px-2.5 py-1 rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-300">⚡ Random Shock: ${formatInrCompact(inp.random_expense_base_inr)} (±${inp.random_expense_variance_pct}%), ${inp.random_expense_annual_probability_pct}%/yr</span>`
       );
     }
     if (inp.rebalance_enabled) {
+      const taxRate = inp.tax_drag_rate !== undefined ? inp.tax_drag_rate : inp.fixed_income_tax_rate;
       badges.push(
-        `<span class="px-2.5 py-1 rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-indigo-300">⚖️ Rebalance: Every ${inp.rebalance_frequency_years} yrs (Debt Tax ${inp.fixed_income_tax_rate}%, Eq Tax ${inp.equity_tax_rate}%)</span>`
+        `<span class="px-2.5 py-1 rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-indigo-300">⚖️ Rebalance: Every ${inp.rebalance_frequency_years} yrs (${taxRate}% Tax Drag)</span>`
       );
     }
     stripEl.innerHTML = badges.join('');
@@ -580,7 +1218,6 @@ function renderSpaghettiAndPercentileChart() {
 
   if (charts.spaghetti) charts.spaghetti.destroy();
 
-  // Determine optimal X-axis length based on the currently visible curve(s)
   let endIdx = traj.ages.length;
   const findLastNonZeroIndex = (arr) => {
     for (let i = arr.length - 1; i >= 0; i--) {
@@ -605,24 +1242,27 @@ function renderSpaghettiAndPercentileChart() {
   const p50Slice = traj.p50.slice(0, endIdx);
   const p10Slice = traj.p10.slice(0, endIdx);
 
-  // Build per-point marker styling so Known Expenses & Home Improvements stand out visibly on the chart curves
   const pointRadiiP50 = agesSlice.map((age) => {
     if (knownAgesSet.has(age)) return 7;
-    const evs = eventsByAge[String(age)] || [];
+    const evs = eventsByAgeP50[String(age)] || [];
     if (evs.some((e) => e.startsWith('🏠') || e.startsWith('⚡'))) return 5;
     return 0;
   });
   const pointColorsP50 = agesSlice.map((age) => {
-    if (knownAgesSet.has(age)) return '#f59e0b'; // Amber gold for Known Tagged Events
-    const evs = eventsByAge[String(age)] || [];
-    if (evs.some((e) => e.startsWith('🏠'))) return '#10b981'; // Emerald for Home Improvement
-    if (evs.some((e) => e.startsWith('⚡'))) return '#a855f7'; // Purple for Random Shock
+    if (knownAgesSet.has(age)) return '#f59e0b';
+    const evs = eventsByAgeP50[String(age)] || [];
+    if (evs.some((e) => e.startsWith('🏠'))) return '#10b981';
+    if (evs.some((e) => e.startsWith('⚡'))) return '#a855f7';
     return '#6366f1';
   });
 
-  const pointRadiiP10 = agesSlice.map((age) => (knownAgesSet.has(age) ? 6 : 0));
+  const pointRadiiP10 = agesSlice.map((age) => {
+    if (knownAgesSet.has(age)) return 6;
+    const evs = eventsByAgeP10[String(age)] || [];
+    if (evs.some((e) => e.startsWith('⚡'))) return 5;
+    return 0;
+  });
 
-  // Dynamically compute Y-axis max strictly from the VISIBLE dataset(s) so P10 never looks flat
   const visibleValues = [];
   if (showP50) visibleValues.push(...p50Slice);
   if (showP10) visibleValues.push(...p10Slice);
@@ -631,7 +1271,8 @@ function renderSpaghettiAndPercentileChart() {
 
   const datasets = [
     {
-      label: '50th Percentile (Median Outcome)',
+      label: 'Median Case (Typical Market)',
+      caseKey: 'p50',
       data: p50Slice,
       hidden: !showP50,
       borderColor: '#6366f1',
@@ -647,7 +1288,8 @@ function renderSpaghettiAndPercentileChart() {
       order: 1,
     },
     {
-      label: '10th Percentile (Unlucky Crash Outcome)',
+      label: 'Worst Case',
+      caseKey: 'p10',
       data: p10Slice,
       hidden: !showP10,
       borderColor: '#f43f5e',
@@ -671,7 +1313,7 @@ function renderSpaghettiAndPercentileChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
+      interaction: { mode: 'nearest', intersect: false },
       plugins: {
         legend: {
           position: 'top',
@@ -707,11 +1349,15 @@ function renderSpaghettiAndPercentileChart() {
             label: (ctxItem) => `${ctxItem.dataset.label}: ${formatInrCompact(ctxItem.raw)}`,
             afterBody: (items) => {
               if (!items || !items.length) return [];
-              const dataIdx = items[0].dataIndex;
+              const activeItem = items[0];
+              const dataIdx = activeItem.dataIndex;
               const age = agesSlice[dataIdx];
-              const evList = eventsByAge[String(age)] || [];
+              const isP10 = activeItem.dataset && activeItem.dataset.caseKey === 'p10';
+              const evMap = isP10 ? eventsByAgeP10 : eventsByAgeP50;
+              const caseTitle = isP10 ? 'Worst Case' : 'Median Case';
+              const evList = evMap[String(age)] || [];
               if (!evList.length) return [];
-              return ['', 'Events & Activity at Age ' + age + ':', ...evList.map((e) => `  • ${e}`)];
+              return ['', `${caseTitle} Events at Age ${age}:`, ...evList.map((e) => `  • ${e}`)];
             },
           },
         },
@@ -736,53 +1382,11 @@ function renderSpaghettiAndPercentileChart() {
   });
 }
 
-// ==================== CHART 2: LONGEVITY HISTOGRAM ====================
-function renderHistogramChart(data) {
-  const ctx = document.getElementById('histogramChart').getContext('2d');
-  const hist = data.longevity_histogram;
-  if (charts.histogram) charts.histogram.destroy();
-
-  charts.histogram = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: hist.map((b) => b.label),
-      datasets: [
-        {
-          label: '% of Simulations',
-          data: hist.map((b) => b.percentage),
-          backgroundColor: hist.map((_, i) =>
-            i === hist.length - 1 ? 'rgba(16, 185, 129, 0.8)' : 'rgba(99, 102, 241, 0.75)'
-          ),
-          borderRadius: 6,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: (item) => `${item.raw}% of runs (${hist[item.dataIndex].count} simulations)`,
-          },
-        },
-      },
-      scales: {
-        x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { display: false } },
-        y: {
-          beginAtZero: true,
-          ticks: { color: '#94a3b8', font: { size: 10 }, callback: (v) => `${v}%` },
-          grid: { color: 'rgba(51, 65, 85, 0.2)' },
-        },
-      },
-    },
-  });
-}
-
-// ==================== CHART 3: SURVIVAL PROBABILITY ====================
+// ==================== CHART 2: SUCCESS RATE BY AGE ====================
 function renderSurvivalChart(data) {
-  const ctx = document.getElementById('survivalChart').getContext('2d');
+  const survivalEl = document.getElementById('survivalChart');
+  if (!survivalEl) return;
+  const ctx = survivalEl.getContext('2d');
   const { ages, survival_probability_pct } = data.survival_curve;
   if (charts.survival) charts.survival.destroy();
 
@@ -792,7 +1396,7 @@ function renderSurvivalChart(data) {
       labels: ages.map((a) => `Age ${a}`),
       datasets: [
         {
-          label: 'Survival Probability (%)',
+          label: 'Success Rate (%)',
           data: survival_probability_pct,
           borderColor: '#10b981',
           backgroundColor: 'rgba(16, 185, 129, 0.15)',
@@ -820,20 +1424,27 @@ function renderSurvivalChart(data) {
   });
 }
 
-// ==================== INDIVIDUAL RANDOM RUN INSPECTOR ====================
+// ==================== YEAR-BY-YEAR RUN INSPECTOR (8 REQUESTED COLUMNS, MEDIAN CASE PRIORITIZED) ====================
 function populateNotableRunsDropdown(data) {
   const select = document.getElementById('notableRunSelect');
   const runs = data.notable_runs || [];
-  // Filter to only P10, P50 (Median), and Random Run #1 to avoid cognitive overload
+  const inp = data.inputs_summary || {};
+  const curAge = inp.current_age || 38;
+  const targetAge = inp.life_expectancy || 90;
+  const maxSimYrs = inp.max_simulated_years || 60;
+
   const filtered = runs
     .map((r, idx) => ({ r, idx }))
-    .filter(({ r }) => r.label.startsWith('P10') || r.label.startsWith('P50') || r.label.startsWith('Random'));
+    .filter(({ r }) => r.label.startsWith('P50') || r.label.startsWith('P10') || r.label.startsWith('Random'));
 
   select.innerHTML = filtered
-    .map(
-      ({ r, idx }) =>
-        `<option value="${idx}" ${r.label.startsWith('P50') ? 'selected' : ''}>${r.label} — Run #${r.run_number} (Lasted ${r.years_lasted} yrs)</option>`
-    )
+    .map(({ r, idx }) => {
+      const ageLabel =
+        r.years_lasted >= maxSimYrs - 0.5
+          ? `Lasts past ${targetAge}+`
+          : `Lasts until ${Math.round(curAge + r.years_lasted)}`;
+      return `<option value="${idx}" ${r.label.startsWith('P50') ? 'selected' : ''}>${r.label} (${ageLabel})</option>`;
+    })
     .join('');
   renderRunInspectorTable();
 }
@@ -854,26 +1465,28 @@ function renderRunInspectorTable() {
   tbody.innerHTML = run.year_log
     .map((row) => {
       const eqColor = row.equity_return_pct >= 0 ? 'text-emerald-400' : 'text-rose-400';
-      const hasSpecialEvent = row.special_events_summary && row.special_events_summary !== '—';
-      const hasRebal = row.rebalance_activity && row.rebalance_activity !== '—';
+      const incVal = row.income_received || 0;
+      const sipVal = row.sip_contributed || 0;
+      const expVal = row.base_living_expense !== undefined ? row.base_living_expense : row.withdrawal;
+      const eventsText = row.combined_events_summary || row.special_events_summary || '—';
+      const hasEvents = eventsText !== '—';
+
       return `
         <tr class="hover:bg-slate-800/40">
-          <td class="py-2 px-3 font-semibold text-white whitespace-nowrap">Year ${row.sim_year} (Age ${row.age})</td>
-          <td class="py-2 px-3 font-mono text-indigo-300 font-bold whitespace-nowrap">${row.sampled_india_year}</td>
-          <td class="py-2 px-3 whitespace-nowrap">
+          <td class="py-2 px-2.5 font-semibold text-white">Age ${row.age}</td>
+          <td class="py-2 px-2.5 font-mono text-indigo-300 font-bold">${row.sampled_india_year}</td>
+          <td class="py-2 px-2.5">
             <span class="font-bold ${eqColor}">${row.equity_return_pct >= 0 ? '+' : ''}${row.equity_return_pct}% Eq</span>
             <span class="text-slate-500 mx-1">/</span>
-            <span class="text-emerald-300">+${row.debt_return_pct}% Debt</span>
+            <span class="text-emerald-300">+${row.debt_return_pct}% FD</span>
+            <span class="text-slate-500 mx-1">/</span>
+            <span class="text-amber-300">${row.inflation_pct}% Inf</span>
           </td>
-          <td class="py-2 px-3 text-amber-300 font-semibold whitespace-nowrap">${row.inflation_pct}%</td>
-          <td class="py-2 px-3 text-amber-200 font-semibold whitespace-nowrap">+${row.lifestyle_inflation_pct}%</td>
-          <td class="py-2 px-3 ${hasSpecialEvent ? 'text-amber-300 font-semibold' : 'text-slate-500'}">${row.special_events_summary || '—'}</td>
-          <td class="py-2 px-3 text-slate-200">
-            <div class="font-bold text-white">${formatInrCompact(row.withdrawal)}</div>
-            <div class="text-[11px] text-slate-400">${row.withdrawal_source_summary || ''}</div>
-          </td>
-          <td class="py-2 px-3 ${hasRebal ? 'text-indigo-300 font-medium' : 'text-slate-500'}">${row.rebalance_activity || '—'}</td>
-          <td class="py-2 px-3 font-bold text-white whitespace-nowrap">${formatInrCompact(row.end_corpus_real)}</td>
+          <td class="py-2 px-2.5 ${incVal > 0 ? 'text-emerald-300 font-semibold' : 'text-slate-500'}">${incVal > 0 ? formatInrCompact(incVal) : '—'}</td>
+          <td class="py-2 px-2.5 ${sipVal > 0 ? 'text-indigo-300 font-semibold' : 'text-slate-500'}">${sipVal > 0 ? formatInrCompact(sipVal) : '—'}</td>
+          <td class="py-2 px-2.5 font-semibold text-white">${formatInrCompact(expVal)}</td>
+          <td class="py-2 px-2.5 ${hasEvents ? 'text-amber-300 font-medium' : 'text-slate-500'}">${eventsText}</td>
+          <td class="py-2 px-2.5 font-bold text-white">${formatInrCompact(row.end_corpus_real)}</td>
         </tr>
       `;
     })
@@ -1012,7 +1625,6 @@ function renderExpenseAnalysisResults(data) {
   const { discovered_schema, summary, category_breakdown, monthly_trend } = data;
   const cols = discovered_schema.columns_discovered;
 
-  // 1. Runtime Schema Discovery Banner
   const headerInfo = discovered_schema.header_row_number
     ? `Header Row #${discovered_schema.header_row_number}`
     : 'Headerless Grid';
@@ -1023,7 +1635,6 @@ function renderExpenseAnalysisResults(data) {
   document.getElementById('schemaRowsSummary').textContent =
     `${discovered_schema.extracted_debit_rows} outflows classified • ${discovered_schema.skipped_credit_rows} inflows skipped`;
 
-  // 2. Hero Summary Tiles
   document.getElementById('expTileMonthly').textContent = `${summary.estimated_monthly_expense_exact} / mo`;
   document.getElementById('expTileAnnual').textContent =
     `Compact: ${summary.estimated_monthly_expense_formatted}/mo • Annualized: ${summary.estimated_annual_expense_formatted}/yr`;
@@ -1036,11 +1647,9 @@ function renderExpenseAnalysisResults(data) {
   document.getElementById('expTileInvestments').textContent =
     `${summary.estimated_monthly_investments_formatted} / mo`;
 
-  // 3. Render Category Chart & Monthly Trend Chart
   renderExpenseCategoryChart(category_breakdown);
   renderExpenseMonthlyTrendChart(monthly_trend);
 
-  // 4. Render Category Breakdown Cards
   const grid = document.getElementById('expenseCategoryCardsGrid');
   grid.innerHTML = category_breakdown
     .map((cat) => {
@@ -1068,7 +1677,6 @@ function renderExpenseAnalysisResults(data) {
     })
     .join('');
 
-  // 5. Populate Category Filter Dropdown & Render Transaction Table
   const filterSelect = document.getElementById('txnCategoryFilterSelect');
   filterSelect.innerHTML =
     `<option value="all">All Categories (${data.transactions.length} lines)</option>` +
@@ -1198,10 +1806,10 @@ function filterTransactionsByCategory(categoryId) {
     .map(
       (t) => `
       <tr class="hover:bg-slate-800/40">
-        <td class="py-2.5 px-3 font-mono text-slate-300 whitespace-nowrap">${t.date}</td>
+        <td class="py-2.5 px-3 font-mono text-slate-300">${t.date}</td>
         <td class="py-2.5 px-3 text-white font-medium">${t.description}</td>
-        <td class="py-2.5 px-3 text-right font-bold text-white whitespace-nowrap">${t.amount_formatted}</td>
-        <td class="py-2.5 px-3 whitespace-nowrap">
+        <td class="py-2.5 px-3 text-right font-bold text-white">${t.amount_formatted}</td>
+        <td class="py-2.5 px-3">
           <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border border-slate-700 bg-slate-950 text-slate-200">
             <span>${t.category_icon}</span>
             <span>${t.category_label}</span>
@@ -1219,6 +1827,8 @@ function filterTransactionsByCategory(categoryId) {
 
 window.addEventListener('DOMContentLoaded', () => {
   renderSplitUI();
+  updateIncomeSettings();
+  updateSipSettings();
   updateAdvSettings();
   setupDropZone();
   syncActiveModulesNav();
@@ -1230,15 +1840,27 @@ if (typeof module !== 'undefined' && module.exports) {
     charts,
     expenseState,
     formatInrCompact,
+    isStep1Complete,
+    syncGoalFormDefaults,
     goToStep,
     returnToWizard,
     updateAge,
     setMedicalInsurance,
+    updateAssetValue,
     updateCorpusLakhs,
     updateSplit,
     renderSplitUI,
+    renderAssetPieChart,
+    updateIncomeSettings,
+    parseIncrementRange,
+    updateSipSettings,
     switchExpenseFreq,
     updateExpense,
+    updateExpenseVariance,
+    computeGoalOccurrences,
+    setGoalFormMode,
+    selectGoalQuickLabel,
+    updateGoalRepeatPreview,
     renderKnownExpensesList,
     addKnownExpenseFromInputs,
     addPresetKnownExpense,
@@ -1247,10 +1869,12 @@ if (typeof module !== 'undefined' && module.exports) {
     updateAdvSettings,
     triggerSimulationRun,
     renderSimulationResults,
+    selectCandidateRetirementAge,
+    applyOutcomeViewForAge,
+    renderRetirementAgeProgression,
     setCurveFocus,
     switchChartScale,
     renderSpaghettiAndPercentileChart,
-    renderHistogramChart,
     renderSurvivalChart,
     populateNotableRunsDropdown,
     renderRunInspectorTable,

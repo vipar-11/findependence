@@ -88,7 +88,7 @@ def activate_module(module_id: str) -> dict[str, Any]:
 
 @app.get("/api/v1/market-data/india", tags=["Market Data"])
 def get_indian_market_data() -> dict[str, Any]:
-    """Return historical Indian market returns (1991-2025), summary statistics, and correlations."""
+    """Return historical Indian market returns (last 20 years), summary statistics, and correlations."""
     return get_market_summary_statistics()
 
 

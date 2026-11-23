@@ -35,6 +35,8 @@ function createMockCanvasContext(canvas) {
     textBaseline: 'alphabetic',
     globalAlpha: 1,
     setTransform() {},
+    translate() {},
+    rotate() {},
     clearRect() {},
     save() {},
     restore() {},
@@ -147,24 +149,36 @@ function getElement(id) {
   if (!elements.has(id)) {
     const el = new MockElement(id);
     const defaults = {
-      infSlider: '6.0',
+      equityLakhsInput: '190',
+      fiLakhsInput: '95',
+      reLakhsInput: '50',
+      cashLakhsInput: '15',
+      jobIncomeInput: '150000',
+      jobYearsInput: '5',
+      jobGrowthInput: '8.0',
+      rentalIncomeInput: '20000',
+      passiveIncomeInput: '10000',
+      eqSipInput: '35000',
+      eqSipStepupInput: '10',
+      fiSipInput: '15000',
+      fiSipStepupInput: '5',
+      sipYearsInput: '5',
       lifeInfSlider: '0.5',
       targetAgeSlider: '90',
-      fiTaxSlider: '30.0',
-      eqTaxSlider: '12.5',
+      taxDragSlider: '10.0',
       rebalanceFreqSlider: '2',
-      homeImpPctInput: '3.0',
-      homeImpVarInput: '1.0',
-      homeImpIntervalInput: '5',
       randExpBaseLakhsInput: '2.0',
       randExpVarInput: '25',
       randExpProbInput: '15',
-      propModeSelect: 'liquidate_fallback',
       samplingSelect: 'iid_bootstrap',
-      numSimsSelect: '1000',
-      newKnownTag: 'Higher Education',
-      newKnownYears: '6',
+      numSimsSelect: '2500',
+      newKnownTag: 'Education',
+      newKnownYears: '38',
       newKnownLakhs: '20',
+      newKnownVariance: '15',
+      newKnownStartYear: '38',
+      newKnownEndYear: '90',
+      newKnownEveryNYears: '3',
       notableRunSelect: '0',
       txnCategoryFilterSelect: 'all',
     };
@@ -246,9 +260,35 @@ async function runAllTests() {
     console.log(`✓ ${name} (${ms} ms)`);
   }
 
-  await runCase('test_local_chart_line_vertical_and_horizontal_bars', async () => {
+  await runCase('test_local_chart_line_pie_vertical_and_horizontal_bars', async () => {
     const canvas = getElement('testChartCanvas');
 
+    // 1. Doughnut / Pie Chart with hover
+    const pieChart = new LocalChart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels: ['Equity', 'Fixed Income', 'Real Estate', 'Cash'],
+        datasets: [
+          {
+            label: 'Assets',
+            data: [190, 95, 50, 15],
+            backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#0ea5e9'],
+          },
+        ],
+      },
+    });
+    canvas.dispatchEvent('mousemove', { clientX: 180, clientY: 120 });
+    canvas.dispatchEvent('mouseleave', {});
+    pieChart.destroy();
+
+    // Empty pie chart (total = 0)
+    const emptyPie = new LocalChart(canvas, {
+      type: 'pie',
+      data: { labels: ['A'], datasets: [{ data: [0] }] },
+    });
+    emptyPie.destroy();
+
+    // 2. Line Chart with separate per-curve tooltips
     let clickedDataset = null;
     const lineChart = new LocalChart(canvas.getContext('2d'), {
       type: 'line',
@@ -256,7 +296,8 @@ async function runAllTests() {
         labels: ['Age 38', 'Age 39', 'Age 40', 'Age 41'],
         datasets: [
           {
-            label: 'Median (P50) Very Long Legend Label To Trigger Multi-Row Legend Wrapping Across Canvas Width',
+            label: 'Typical Market Case Very Long Legend Label To Trigger Multi-Row Legend Wrapping Across Canvas Width',
+            caseKey: 'p50',
             data: [35000000, 36000000, 37000000, 38000000],
             borderColor: '#6366f1',
             backgroundColor: 'rgba(99, 102, 241, 0.2)',
@@ -265,7 +306,8 @@ async function runAllTests() {
             pointBackgroundColor: ['#6366f1', '#f59e0b', '#6366f1', '#10b981'],
           },
           {
-            label: 'P10 Crash Series With Another Long Legend Label For Second Row Wrapping',
+            label: 'Tough 10% Case Series With Another Long Legend Label For Second Row Wrapping',
+            caseKey: 'p10',
             data: [35000000, 28000000, 22000000, 15000000],
             borderColor: '#f43f5e',
             borderDash: [6, 4],
@@ -300,11 +342,12 @@ async function runAllTests() {
       },
     });
 
-    canvas.dispatchEvent('mousemove', { clientX: 200, clientY: 150 });
+    canvas.dispatchEvent('mousemove', { clientX: 200, clientY: 100 });
     assert.ok(lineChart._hoverIndex >= 0);
+    assert.ok(lineChart._hoverDatasetIndex >= 0);
     canvas.dispatchEvent('mousemove', { clientX: 5, clientY: 5 });
     assert.equal(lineChart._hoverIndex, -1);
-    canvas.dispatchEvent('mousemove', { clientX: 250, clientY: 160 });
+    canvas.dispatchEvent('mousemove', { clientX: 250, clientY: 220 });
     canvas.dispatchEvent('mouseleave', {});
     assert.equal(lineChart._hoverIndex, -1);
 
@@ -365,7 +408,7 @@ async function runAllTests() {
     hBarChart.destroy();
   });
 
-  await runCase('test_wizard_controls_currency_formatting_and_split', async () => {
+  await runCase('test_5_step_wizard_assets_income_sips_and_goals', async () => {
     global.window.dispatchEvent('DOMContentLoaded');
 
     assert.equal(appModule.formatInrCompact(35000000), '₹3.50 Cr');
@@ -374,10 +417,22 @@ async function runAllTests() {
     assert.equal(appModule.formatInrCompact(500), '₹500');
     assert.equal(appModule.formatInrCompact(-150000), '-₹1.50 L');
 
+    // Step 1 mandatory guard: cannot move to Step 2 until both current_age and has_medical_insurance are answered
+    appModule.state.current_age = null;
+    appModule.state.has_medical_insurance = null;
+    getElement('ageInput').value = '';
     appModule.goToStep(2);
-    assert.equal(appModule.state.step, 2);
-    appModule.goToStep(3);
-    assert.equal(appModule.state.step, 3);
+    assert.equal(appModule.state.step, 1);
+
+    // Answer both mandatory questions in Step 1
+    appModule.updateAge('38');
+    appModule.setMedicalInsurance(true);
+    assert.equal(appModule.isStep1Complete(), true);
+
+    for (const s of [1, 2, 3, 4, 5]) {
+      appModule.goToStep(s);
+      assert.equal(appModule.state.step, s);
+    }
     appModule.returnToWizard(1);
     assert.equal(appModule.state.step, 1);
 
@@ -388,47 +443,71 @@ async function runAllTests() {
     assert.ok(appModule.state.life_expectancy >= 83);
     appModule.updateAge('38');
 
+    // Medical insurance toggle changes default random shock between ₹5L and ₹2L
     getElement('medInsStatusNote');
     appModule.setMedicalInsurance(false);
     assert.equal(appModule.state.has_medical_insurance, false);
+    assert.equal(appModule.state.random_expense_base_inr, 500000);
     appModule.setMedicalInsurance(true);
     assert.equal(appModule.state.has_medical_insurance, true);
+    assert.equal(appModule.state.random_expense_base_inr, 200000);
+
+    // Step 2: Individual Asset Values + Pie Chart + Liquidity calculation
+    appModule.updateAssetValue('equity', 200);
+    appModule.updateAssetValue('fixed_income', 100);
+    appModule.updateAssetValue('real_estate', 60);
+    appModule.updateAssetValue('cash', 40);
+    assert.equal(appModule.state.corpus_lakhs, 400);
 
     appModule.updateCorpusLakhs(500);
-    assert.equal(appModule.state.corpus_lakhs, 500);
-
-    appModule.updateSplit('equity', 60);
-    assert.equal(appModule.state.equity_pct + appModule.state.fixed_income_pct + appModule.state.property_pct, 100);
-    appModule.updateSplit('fixed_income', 40);
-    assert.equal(appModule.state.equity_pct + appModule.state.fixed_income_pct + appModule.state.property_pct, 100);
-    appModule.updateSplit('property', 20);
-    assert.equal(appModule.state.equity_pct + appModule.state.fixed_income_pct + appModule.state.property_pct, 100);
-
-    appModule.state.fixed_income_pct = 0;
-    appModule.state.property_pct = 0;
     appModule.updateSplit('equity', 50);
+    appModule.updateSplit('fixed_income', 30);
+    appModule.updateSplit('property', 20);
 
-    appModule.state.equity_pct = 0;
-    appModule.state.property_pct = 0;
-    appModule.updateSplit('fixed_income', 50);
+    // Step 3: Income Categories (including Age until which income lasts & increment range e.g. '5-9%')
+    getElement('jobYearsInput').value = '45';
+    getElement('jobGrowthInput').value = '5-9%';
+    appModule.updateIncomeSettings();
+    assert.equal(appModule.state.job_monthly_income, 150000);
+    assert.equal(appModule.state.job_income_until_age, 45);
+    assert.equal(appModule.state.job_income_years, 7);
+    assert.equal(appModule.state.job_income_growth_pct, 5);
+    assert.equal(appModule.state.job_income_growth_max_pct, 9);
+    getElement('jobYearsInput').value = '5';
+    getElement('jobGrowthInput').value = '8.0';
+    appModule.updateIncomeSettings();
+    assert.equal(appModule.state.job_income_years, 5);
 
-    appModule.state.equity_pct = 0;
-    appModule.state.fixed_income_pct = 0;
-    appModule.updateSplit('property', 50);
+    // Step 4: Ongoing Monthly SIPs
+    appModule.updateSipSettings();
+    assert.equal(appModule.state.equity_sip_monthly, 35000);
+    assert.equal(appModule.state.fixed_income_sip_monthly, 15000);
 
+    // Step 5: Expenses (with optional variance) & One-Off + Recurring Goals (with Start Age / End Age)
+    appModule.updateExpense(100000);
+    appModule.updateExpenseVariance('10');
+    assert.equal(appModule.state.expense_variance_pct, 10);
+    appModule.updateExpenseVariance('');
+    assert.equal(appModule.state.expense_variance_pct, 0);
     appModule.switchExpenseFreq('annual');
     assert.equal(appModule.state.expense_frequency, 'annual');
     appModule.switchExpenseFreq('monthly');
     assert.equal(appModule.state.expense_frequency, 'monthly');
 
+    // Quick labels for One-Off (Education, Marriage, Vehicle) and Recurring (Home Improvement, Vacation)
+    appModule.selectGoalQuickLabel('Vehicle', false, 15, 10, 43, 43, 1);
     appModule.addKnownExpenseFromInputs();
-    appModule.addPresetKnownExpense('Car Upgrade', 5, 15);
-    assert.ok(appModule.state.known_future_expenses.length >= 2);
+    // Recurring with empty End Age -> defaults to End of Plan
+    appModule.selectGoalQuickLabel('Vacation', true, 2, 15, 40, '', 2);
+    appModule.addKnownExpenseFromInputs();
+    appModule.addPresetKnownExpense('Home Improvement', 5, 5, true, 20, 30, 5);
+
     while (appModule.state.known_future_expenses.length > 0) {
       appModule.removeKnownExpense(0);
     }
     assert.equal(appModule.state.known_future_expenses.length, 0);
-    appModule.addPresetKnownExpense('Higher Education', 8, 25);
+    appModule.addPresetKnownExpense('Education', 8, 25, false);
+    appModule.addPresetKnownExpense('Vacation', 2, 2, true, 15, 20, 2);
 
     appModule.toggleAdvancedDrawer();
     getElement('rebalanceEnabledChk').checked = false;
@@ -437,44 +516,149 @@ async function runAllTests() {
     appModule.updateAdvSettings();
   });
 
-  await runCase('test_simulation_runner_charts_and_inspector', async () => {
+  await runCase('test_simulation_runner_when_can_i_retire_separate_tooltips_and_inspector', async () => {
     const mockSimData = {
       simulation_meta: {
         seed_used: 98765,
         num_simulations: 500,
-        historical_data_period: '2006–2025 (Last 20 Years)',
+        historical_data_period: 'Last 20 Years of Indian Market Data',
       },
       inputs_summary: {
         current_age: 38,
         life_expectancy: 90,
         target_horizon_years: 52,
         max_simulated_years: 62,
-        total_corpus_formatted: '₹3.50 Cr',
+        total_corpus_formatted: '₹4.00 Cr',
         monthly_expense_formatted: '₹1.00 L',
+        liquid_pct: 85.0,
         has_medical_insurance: false,
-        allocation: { equity_pct: 55, fixed_income_pct: 30, property_pct: 15 },
-        known_future_expenses: [{ years_from_now: 2, amount_today_inr: 2500000, event_tag: 'Education' }],
-        home_improvement_enabled: true,
-        home_improvement_pct_of_property: 3.0,
-        home_improvement_variance_pct: 1.0,
-        home_improvement_interval_years: 5,
+        allocation: { equity_pct: 50, fixed_income_pct: 25, property_pct: 15, cash_pct: 10 },
+        known_future_expenses: [
+          { years_from_now: 2, amount_today_inr: 2500000, event_tag: 'Education', is_recurring: false },
+          { start_year: 5, end_year: 25, every_n_years: 5, amount_today_inr: 500000, event_tag: 'Home Improvement', is_recurring: true },
+        ],
         random_expense_enabled: true,
-        random_expense_base_inr: 200000,
+        random_expense_base_inr: 500000,
         random_expense_variance_pct: 25,
         random_expense_annual_probability_pct: 15,
         rebalance_enabled: true,
         rebalance_frequency_years: 2,
-        fixed_income_tax_rate: 30.0,
-        equity_tax_rate: 12.5,
+        tax_drag_rate: 10.0,
+      },
+      retirement_readiness: {
+        target_success_rate_pct: 85.0,
+        can_retire_at_age: 40,
+        years_until_retirement: 2,
+        evaluated_retirement_age: 40,
+        evaluated_retire_in_years: 2,
+        retire_today_success_rate_pct: 72.0,
+        evaluated_success_rate_pct: 88.5,
+        max_income_years_searched: 5,
+        candidate_retirement_ages: [
+          {
+            retire_in_years: 0,
+            retirement_age: 38,
+            success_rate_pct: 72.0,
+            median_years_lasted: 42.0,
+            worst_case_years_lasted: 19.5,
+            median_depletion_age: 80.0,
+            worst_case_depletion_age: 57.5,
+            meets_target: false,
+          },
+          {
+            retire_in_years: 1,
+            retirement_age: 39,
+            success_rate_pct: 80.0,
+            median_years_lasted: 49.0,
+            worst_case_years_lasted: 22.0,
+            median_depletion_age: 87.0,
+            worst_case_depletion_age: 60.0,
+            meets_target: false,
+          },
+          {
+            retire_in_years: 2,
+            retirement_age: 40,
+            success_rate_pct: 88.5,
+            median_years_lasted: 62.0,
+            worst_case_years_lasted: 24.5,
+            median_depletion_age: 100.0,
+            worst_case_depletion_age: 62.5,
+            meets_target: true,
+          },
+        ],
+        outcomes_by_age: {
+          '38': {
+            retirement_age: 38,
+            retire_in_years: 0,
+            verdict: {
+              status: 'borderline',
+              badge: 'Age 38 (2 Yrs Before Suggested Age 40)',
+              headline: 'Retiring earlier at Age 38 gives a 72.0% success rate (vs. 88.5% at suggested Age 40).',
+              recommendation: 'In the Median Case your wealth lasts until Age 80, and in the Worst Case until Age 58.',
+            },
+            longevity_stats: {
+              success_probability_pct: 72.0,
+              success_rate_pct: 72.0,
+              percentiles_years: { p10: 19.5, p50: 42.0 },
+              depletion_ages: { p10: 57.5, p50: 80.0 },
+            },
+            trajectories: {
+              real: {
+                ages: [38, 39, 40, 41, 42, 43, 44, 45, 46],
+                p50: [35000000, 34000000, 32500000, 31000000, 30000000, 29000000, 28000000, 27000000, 26000000],
+                p10: [35000000, 28000000, 21000000, 15000000, 9000000, 3000000, 0, 0, 0],
+              },
+              nominal: {
+                ages: [38, 39, 40, 41, 42, 43, 44, 45, 46],
+                p50: [35000000, 36000000, 36500000, 37000000, 38000000, 39000000, 40000000, 41000000, 42000000],
+                p10: [35000000, 29000000, 23000000, 17000000, 11000000, 4000000, 0, 0, 0],
+              },
+            },
+            chart_events: {
+              events_by_age: { '40': ['🎯 Education (Yr 2): ₹25.00 L'], '43': ['⚡ Random Shock: ₹5.00 L'] },
+              events_by_age_p50: { '40': ['🎯 Education (Yr 2): ₹25.00 L'], '43': ['🏠 Home Improvement (Yr 5)'] },
+              events_by_age_p10: { '40': ['🎯 Education (Yr 2): ₹25.00 L'], '43': ['⚡ Random Shock: ₹5.00 L'] },
+              known_expense_ages: [40],
+            },
+            survival_curve: {
+              ages: [38, 39, 40, 41],
+              survival_probability_pct: [100, 96, 91, 86],
+            },
+            notable_runs: [
+              {
+                case_key: 'p50',
+                label: 'P50 — Median Case (Typical Market)',
+                run_number: 12,
+                years_lasted: 42.0,
+                year_log: [
+                  {
+                    sim_year: 1,
+                    age: 38,
+                    sampled_india_year: 2008,
+                    equity_return_pct: -51.3,
+                    debt_return_pct: 8.8,
+                    inflation_pct: 8.4,
+                    income_received: 0,
+                    sip_contributed: 0,
+                    base_living_expense: 1200000,
+                    combined_events_summary: '—',
+                    end_corpus_real: 26800000,
+                  },
+                ],
+              },
+            ],
+          },
+        },
       },
       verdict: {
         status: 'retire_ready',
-        badge: 'Yes — High Confidence',
-        headline: 'Wealth lasts 52+ yrs',
-        recommendation: 'Safe withdrawal rate.',
+        badge: 'You Can Retire at Age 40 (in 2 Years)',
+        headline: 'You can retire at Age 40 (in 2 years) with an 88.5% success rate.',
+        recommendation: 'Continuing your income and SIPs for 2 more years reaches the 85% target.',
       },
       longevity_stats: {
         success_probability_pct: 88.5,
+        success_rate_pct: 88.5,
         percentiles_years: { p10: 24.5, p50: 62.0 },
         depletion_ages: { p10: 62.5, p50: 100.0 },
       },
@@ -493,21 +677,26 @@ async function runAllTests() {
       chart_events: {
         events_by_age: {
           '40': ['🎯 Education (Yr 2): ₹25.00 L'],
-          '43': ['🏠 Home Improvement (Yr 5)', '⚡ Random Shock: ₹3.00 L'],
+          '43': ['🏠 Home Improvement (Yr 5)', '⚡ Random Shock: ₹5.00 L'],
+        },
+        events_by_age_p50: {
+          '40': ['🎯 Education (Yr 2): ₹25.00 L'],
+          '43': ['🏠 Home Improvement (Yr 5)'],
+        },
+        events_by_age_p10: {
+          '40': ['🎯 Education (Yr 2): ₹25.00 L'],
+          '43': ['⚡ Random Shock: ₹5.00 L'],
         },
         known_expense_ages: [40],
       },
-      longevity_histogram: [
-        { label: '0–25 yrs', count: 50, percentage: 10.0 },
-        { label: '52+ yrs', count: 450, percentage: 90.0 },
-      ],
       survival_curve: {
         ages: [38, 39, 40, 41],
         survival_probability_pct: [100, 99, 97, 95],
       },
       notable_runs: [
         {
-          label: 'P50 — Median Simulation Run',
+          case_key: 'p50',
+          label: 'P50 — Median Case (Typical Market)',
           run_number: 12,
           years_lasted: 52.0,
           year_log: [
@@ -516,13 +705,12 @@ async function runAllTests() {
               age: 38,
               sampled_india_year: 2008,
               equity_return_pct: -51.3,
-              debt_return_pct: 11.2,
-              inflation_pct: 8.3,
-              lifestyle_inflation_pct: 0.5,
-              special_events_summary: '—',
-              withdrawal: 1200000,
-              withdrawal_source_summary: 'Debt: ₹17.14 L',
-              rebalance_activity: '—',
+              debt_return_pct: 8.8,
+              inflation_pct: 8.4,
+              income_received: 1800000,
+              sip_contributed: 600000,
+              base_living_expense: 1200000,
+              combined_events_summary: '—',
               end_corpus_real: 28000000,
             },
             {
@@ -530,19 +718,19 @@ async function runAllTests() {
               age: 39,
               sampled_india_year: 2009,
               equity_return_pct: 77.6,
-              debt_return_pct: 4.8,
+              debt_return_pct: 7.3,
               inflation_pct: 10.9,
-              lifestyle_inflation_pct: 0.5,
-              special_events_summary: '🎯 Education',
-              withdrawal: 3700000,
-              withdrawal_source_summary: 'Debt + Eq',
-              rebalance_activity: 'Sold ₹15.00 L Eq → Debt',
+              income_received: 0,
+              sip_contributed: 0,
+              base_living_expense: 1300000,
+              combined_events_summary: '🎯 Education: ₹25.00 L • ⚖️ Rebalanced ₹15.00 L Eq → FD',
               end_corpus_real: 36000000,
             },
           ],
         },
         {
-          label: 'P10 — Unlucky Early Crash Run',
+          case_key: 'p10',
+          label: 'P10 — Worst Case',
           run_number: 4,
           years_lasted: 24.5,
           year_log: [],
@@ -555,6 +743,13 @@ async function runAllTests() {
       json: async () => mockSimData,
     });
 
+    // Blank expense should be blocked and alert the user rather than defaulting to ₹1 Lakh
+    appModule.updateExpense(0);
+    await appModule.triggerSimulationRun();
+    assert.ok(String(lastAlert).includes('living expenses'));
+
+    // Now set valid living expense and run simulation
+    appModule.updateExpense(100000);
     await appModule.triggerSimulationRun();
     assert.ok(appModule.state.result);
 
@@ -569,13 +764,35 @@ async function runAllTests() {
     spChart.options.plugins.legend.onClick({}, { datasetIndex: 1 });
     spChart.options.plugins.legend.onClick({}, { datasetIndex: 0 });
 
+    // Verify separate tooltips for Median Case (P50) vs Worst Case (P10) markers
     const spTooltip = spChart.options.plugins.tooltip.callbacks;
-    assert.ok(spTooltip.label({ dataset: { label: 'P50' }, raw: 35000000 }).includes('₹'));
-    assert.ok(spTooltip.afterBody([{ dataIndex: 2 }]).length > 0);
+    assert.ok(spTooltip.label({ dataset: { label: 'Median Case' }, raw: 35000000 }).includes('₹'));
+    const p50Body = spTooltip.afterBody([{ dataIndex: 5, dataset: { caseKey: 'p50' } }]);
+    const p10Body = spTooltip.afterBody([{ dataIndex: 5, dataset: { caseKey: 'p10' } }]);
+    assert.ok(p50Body.some((l) => l.includes('Median Case')));
+    assert.ok(p10Body.some((l) => l.includes('Worst Case')));
     assert.equal(spTooltip.afterBody([]).length, 0);
 
-    const histTooltip = appModule.charts.histogram.options.plugins.tooltip.callbacks;
-    assert.ok(histTooltip.label({ raw: 90.0, dataIndex: 1 }).includes('90%'));
+    // Verify Retirement Age Finder Bar Chart & selecting an earlier age (Age 38 before recommended Age 40)
+    const retChart = appModule.charts.retirementAge;
+    assert.ok(retChart);
+    const retTooltip = retChart.options.plugins.tooltip.callbacks;
+    assert.ok(retTooltip.label({ dataIndex: 2 }).includes('88.5%'));
+    assert.ok(retTooltip.afterBody([{ dataIndex: 0 }]).some((l) => l.includes('Median Case')));
+
+    // Click first bar (Age 38) on the Retirement Age Finder Bar Chart
+    const retCanvas = getElement('retirementAgeChart');
+    retCanvas.dispatchEvent('click', { clientX: 90, clientY: 120 });
+    assert.equal(appModule.state.selected_retirement_age, 38);
+    assert.equal(getElement('cardP50Age').textContent, 'Lasts until 80');
+    assert.equal(getElement('cardP10Age').textContent, 'Lasts until 58');
+
+    // Also test selecting back to recommended Age 40
+    appModule.selectCandidateRetirementAge(40);
+    assert.equal(appModule.state.selected_retirement_age, 40);
+
+    // Also test empty retirement_readiness branch
+    appModule.renderRetirementAgeProgression(null);
 
     mockFetchHandler = async () => ({
       ok: false,
@@ -753,7 +970,6 @@ async function runAllTests() {
     const lines = source.split('\n');
     const totalLines = lines.length;
 
-    // Build line offset map
     const lineOffsets = [];
     let offset = 0;
     for (let i = 0; i < totalLines; i++) {
@@ -789,7 +1005,6 @@ async function runAllTests() {
           continue;
         }
         const firstNonWs = lo.start + lo.text.indexOf(trimmed[0]);
-        // In V8 nested ranges, the smallest range containing firstNonWs determines the line's execution count
         let bestRange = null;
         for (const r of allRanges) {
           if (r.startOffset <= firstNonWs && firstNonWs < r.endOffset) {
