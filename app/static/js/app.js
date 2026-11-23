@@ -41,7 +41,8 @@ const state = {
   // Step 5: Living Expenses & Planned Future Expenses (Not prefilled)
   expense_frequency: 'monthly',
   expense_amount: 0,
-  expense_variance_pct: 0,
+  expense_variance_pct: 10.0,
+  selected_goal_quick_label: 'Education',
   goal_form_is_recurring: false,
   known_future_expenses: [],
 
@@ -49,11 +50,12 @@ const state = {
   life_expectancy: 90,
   lifestyle_inflation_rate: 0.5,
   tax_drag_rate: 10.0,
+  global_variance_pct: 10.0,
   rebalance_enabled: true,
   rebalance_frequency_years: 2,
   random_expense_enabled: true,
   random_expense_base_inr: 200000,
-  random_expense_variance_pct: 25.0,
+  random_expense_variance_pct: 10.0,
   random_expense_annual_probability_pct: 15.0,
   property_mode: 'liquidate_fallback',
   sampling_method: 'iid_bootstrap',
@@ -134,12 +136,28 @@ function returnToWizard(stepNum = 1) {
 }
 
 // ==================== STEP 1: AGE & MEDICAL INSURANCE (MANDATORY) ====================
-function updateAge(val) {
-  let age = parseInt(val, 10);
-  if (isNaN(age)) return;
-  age = Math.max(18, Math.min(84, age));
+function updateAge(val, commitToInput = false) {
+  const rawStr = String(val !== undefined && val !== null ? val : '').trim();
+  if (rawStr === '') {
+    state.current_age = null;
+    return;
+  }
+  const parsed = parseInt(rawStr, 10);
+  if (isNaN(parsed)) return;
+
+  // When typing a 2-digit age like '45' into the text input (commitToInput === false),
+  // do NOT clamp the first keystroke '4' to 18 or overwrite ageInput.value while parsed < 18!
+  if (!commitToInput && parsed > 0 && parsed < 18) {
+    state.current_age = null;
+    return;
+  }
+
+  const age = Math.max(18, Math.min(84, parsed));
   state.current_age = age;
-  document.getElementById('ageInput').value = age;
+  const ageInp = document.getElementById('ageInput');
+  if (ageInp && (commitToInput || parsed >= 18)) {
+    ageInp.value = age;
+  }
   document.getElementById('ageSlider').value = Math.min(75, Math.max(20, age));
 
   if (isStep1Complete()) {
@@ -161,7 +179,6 @@ function setMedicalInsurance(hasIns) {
   state.has_medical_insurance = Boolean(hasIns);
   const btnYes = document.getElementById('btnMedInsYes');
   const btnNo = document.getElementById('btnMedInsNo');
-  const note = document.getElementById('medInsStatusNote');
   const shockLakhsInput = document.getElementById('randExpBaseLakhsInput');
 
   if (isStep1Complete()) {
@@ -170,41 +187,33 @@ function setMedicalInsurance(hasIns) {
   }
 
   if (state.has_medical_insurance) {
-    btnYes.className = 'px-4 py-2 rounded-xl text-xs font-bold border-2 border-emerald-500 bg-emerald-500/20 text-emerald-300 transition';
-    btnNo.className = 'px-4 py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-900 text-slate-400 hover:text-white transition';
+    btnYes.className = 'px-5 py-2 rounded-xl text-xs font-bold border-2 border-emerald-500 bg-emerald-500/20 text-emerald-300 transition';
+    btnNo.className = 'px-5 py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-900 text-slate-400 hover:text-white transition';
     state.random_expense_base_inr = 200000;
     if (shockLakhsInput) shockLakhsInput.value = '2.0';
-    if (note) {
-      note.textContent = '✅ Medical insurance coverage selected: Yes.';
-      note.className = 'text-xs text-emerald-400 block mt-0.5';
-    }
   } else {
-    btnNo.className = 'px-4 py-2 rounded-xl text-xs font-bold border-2 border-rose-500 bg-rose-500/20 text-rose-300 transition';
-    btnYes.className = 'px-4 py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-900 text-slate-400 hover:text-white transition';
+    btnNo.className = 'px-5 py-2 rounded-xl text-xs font-bold border-2 border-rose-500 bg-rose-500/20 text-rose-300 transition';
+    btnYes.className = 'px-5 py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-900 text-slate-400 hover:text-white transition';
     state.random_expense_base_inr = 500000;
     if (shockLakhsInput) shockLakhsInput.value = '5.0';
-    if (note) {
-      note.textContent = '⚠️ Medical insurance coverage selected: No.';
-      note.className = 'text-xs text-rose-400 block mt-0.5';
-    }
   }
 }
 
-// ==================== STEP 2: INDIVIDUAL ASSET VALUES, PIE CHART & LIQUIDITY ====================
+// ==================== STEP 2: INDIVIDUAL ASSET VALUES, PIE CHART & LIQUIDITY (0-5 CR SLIDER SCALE) ====================
 function updateAssetValue(assetKey, rawVal) {
   const lakhs = Math.max(0, parseFloat(rawVal) || 0);
   if (assetKey === 'equity') {
     state.equity_lakhs = lakhs;
     document.getElementById('equityLakhsInput').value = lakhs || '';
-    document.getElementById('equityLakhsSlider').value = Math.min(1500, lakhs);
+    document.getElementById('equityLakhsSlider').value = Math.min(500, lakhs);
   } else if (assetKey === 'fixed_income') {
     state.fixed_income_lakhs = lakhs;
     document.getElementById('fiLakhsInput').value = lakhs || '';
-    document.getElementById('fiLakhsSlider').value = Math.min(1500, lakhs);
+    document.getElementById('fiLakhsSlider').value = Math.min(500, lakhs);
   } else if (assetKey === 'real_estate') {
     state.real_estate_lakhs = lakhs;
     document.getElementById('reLakhsInput').value = lakhs || '';
-    document.getElementById('reLakhsSlider').value = Math.min(1500, lakhs);
+    document.getElementById('reLakhsSlider').value = Math.min(500, lakhs);
   } else if (assetKey === 'cash') {
     state.cash_lakhs = lakhs;
     document.getElementById('cashLakhsInput').value = lakhs || '';
@@ -443,9 +452,11 @@ function updateExpense(val) {
 
 function updateExpenseVariance(val) {
   const v = Math.max(0, Math.min(100, parseFloat(val) || 0));
+  state.global_variance_pct = v;
   state.expense_variance_pct = v;
-  const inp = document.getElementById('expenseVarianceInput');
-  if (inp) inp.value = v > 0 ? v : '';
+  state.random_expense_variance_pct = v;
+  const gSlider = document.getElementById('globalVarianceSlider');
+  if (gSlider) gSlider.value = v;
   updateExpense(state.expense_amount);
 }
 
@@ -522,24 +533,38 @@ function setGoalFormMode(isRecurring) {
   updateGoalRepeatPreview();
 }
 
+const QUICK_GOAL_LABELS = ['Education', 'Marriage', 'Vehicle', 'Home Improvement', 'Vacation'];
+
 function selectGoalQuickLabel(tag, isRecurring, lakhs, variancePct, startYr, endYr, everyNYrs) {
   const baseAge = state.current_age || 38;
   const planEndAge = state.life_expectancy || 90;
+  state.selected_goal_quick_label = tag;
   document.getElementById('newKnownTag').value = tag;
+
+  // Highlight the selected quick label chip; all quick labels work with both One-Off and Recurring
+  QUICK_GOAL_LABELS.forEach((lbl) => {
+    const chipEl = document.getElementById(`goalChip_${lbl}`);
+    if (chipEl) {
+      chipEl.className = lbl === tag ? 'goal-chip goal-chip-active' : 'goal-chip';
+    }
+  });
+
   if (lakhs !== undefined) document.getElementById('newKnownLakhs').value = lakhs;
   const resolvedStartAge = startYr !== undefined ? _resolveInputToAge(startYr, baseAge, baseAge) : baseAge;
   const resolvedEndAge =
     endYr !== undefined && endYr !== '' ? _resolveInputToAge(endYr, baseAge, planEndAge) : planEndAge;
   document.getElementById('newKnownYears').value = String(resolvedStartAge);
-  const varEl = document.getElementById('newKnownVariance');
   const sEl = document.getElementById('newKnownStartYear');
   const eEl = document.getElementById('newKnownEndYear');
   const nEl = document.getElementById('newKnownEveryNYears');
-  if (varEl) varEl.value = isRecurring && variancePct !== undefined ? variancePct : '';
   if (sEl) sEl.value = String(resolvedStartAge);
   if (eEl) eEl.value = String(resolvedEndAge);
   if (nEl) nEl.value = String(everyNYrs !== undefined ? everyNYrs : 3);
-  setGoalFormMode(isRecurring);
+  if (variancePct !== undefined && variancePct > 0) {
+    state.global_variance_pct = variancePct;
+  }
+  const targetMode = typeof isRecurring === 'boolean' ? isRecurring : state.goal_form_is_recurring;
+  setGoalFormMode(targetMode);
 }
 
 function updateGoalRepeatPreview() {
@@ -552,7 +577,7 @@ function updateGoalRepeatPreview() {
   const baseAge = state.current_age || 38;
   const planEndAge = state.life_expectancy || 90;
 
-  const displayTag = tag || 'Planned Expense';
+  const displayTag = tag || state.selected_goal_quick_label || 'Planned Expense';
   const amtStr = !isNaN(rawLakhs) && rawLakhs > 0 ? formatInrCompact(rawLakhs * 100000) : 'entered amount';
 
   if (!state.goal_form_is_recurring) {
@@ -570,8 +595,8 @@ function updateGoalRepeatPreview() {
       _resolveInputToAge((document.getElementById('newKnownEndYear') || {}).value, baseAge, planEndAge)
     );
     const step = Math.max(1, parseInt((document.getElementById('newKnownEveryNYears') || {}).value, 10) || 3);
-    const varPct = Math.max(0, parseFloat((document.getElementById('newKnownVariance') || {}).value) || 0);
-    const varLabel = varPct > 0 ? ` ±${varPct}%` : '';
+    const varPct = state.global_variance_pct !== undefined ? state.global_variance_pct : 10;
+    const varLabel = varPct > 0 ? ` (±${varPct}% global variance)` : '';
     const yrs = computeGoalOccurrences({
       is_recurring: true,
       start_age: startAge,
@@ -663,7 +688,7 @@ function addKnownExpenseFromInputs() {
       variance_pct: 0,
     });
   } else {
-    const varPct = Math.max(0, Math.min(100, parseFloat((document.getElementById('newKnownVariance') || {}).value) || 0));
+    const varPct = Math.max(0, Math.min(100, state.global_variance_pct !== undefined ? state.global_variance_pct : 10));
     const startAge = Math.max(baseAge, _resolveInputToAge((document.getElementById('newKnownStartYear') || {}).value, baseAge, baseAge));
     const endAge = Math.max(
       startAge,
@@ -728,6 +753,16 @@ function updateAdvSettings() {
   if (taxSlider) {
     state.tax_drag_rate = parseFloat(taxSlider.value) || 10.0;
   }
+  const globalVarSlider = document.getElementById('globalVarianceSlider');
+  if (globalVarSlider && globalVarSlider.value !== '') {
+    state.global_variance_pct = Math.max(0, Math.min(100, parseFloat(globalVarSlider.value) || 0));
+  }
+  state.expense_variance_pct = state.global_variance_pct;
+  state.random_expense_variance_pct = state.global_variance_pct;
+  state.known_future_expenses.forEach((ev) => {
+    if (ev.is_recurring) ev.variance_pct = state.global_variance_pct;
+  });
+
   state.rebalance_enabled = document.getElementById('rebalanceEnabledChk').checked;
   state.rebalance_frequency_years = parseInt(document.getElementById('rebalanceFreqSlider').value, 10) || 2;
   const passiveInfSlider = document.getElementById('passiveInfFreqSlider');
@@ -742,7 +777,6 @@ function updateAdvSettings() {
   state.random_expense_enabled = document.getElementById('randExpEnabledChk').checked;
   const randLakhs = Math.max(0, parseFloat(document.getElementById('randExpBaseLakhsInput').value) || 0);
   state.random_expense_base_inr = Math.round(randLakhs * 100000);
-  state.random_expense_variance_pct = Math.max(0, parseFloat(document.getElementById('randExpVarInput').value) || 0);
   state.random_expense_annual_probability_pct = Math.max(
     0,
     Math.min(100, parseFloat(document.getElementById('randExpProbInput').value) || 0)
@@ -759,6 +793,12 @@ function updateAdvSettings() {
   document.getElementById('targetAgeValText').textContent = state.life_expectancy;
   const taxValEl = document.getElementById('taxDragValText');
   if (taxValEl) taxValEl.textContent = state.tax_drag_rate.toFixed(1);
+  const gVarTextEl = document.getElementById('globalVarValText');
+  if (gVarTextEl) gVarTextEl.textContent = state.global_variance_pct;
+  const gVarTipEl = document.getElementById('globalVarTooltipPct');
+  if (gVarTipEl) gVarTipEl.textContent = state.global_variance_pct;
+  const advGVarEl = document.getElementById('advSummaryGlobalVar');
+  if (advGVarEl) advGVarEl.textContent = `±${state.global_variance_pct}%`;
   document.getElementById('rebalanceFreqText').textContent = state.rebalance_frequency_years;
 
   const advTaxEl = document.getElementById('advSummaryTaxDrag');
@@ -849,7 +889,8 @@ async function triggerSimulationRun() {
     sip_years: null,
     expense_amount: effectiveExpense,
     expense_frequency: state.expense_frequency,
-    expense_variance_pct: state.expense_variance_pct,
+    expense_variance_pct: state.global_variance_pct,
+    global_variance_pct: state.global_variance_pct,
     lifestyle_inflation_rate: state.lifestyle_inflation_rate,
     post_retirement_expense_multiplier: 100.0,
     property_mode: state.property_mode,
@@ -1473,20 +1514,20 @@ function renderRunInspectorTable() {
 
       return `
         <tr class="hover:bg-slate-800/40">
-          <td class="py-2 px-2.5 font-semibold text-white">Age ${row.age}</td>
-          <td class="py-2 px-2.5 font-mono text-indigo-300 font-bold">${row.sampled_india_year}</td>
-          <td class="py-2 px-2.5">
+          <td data-label="Age" class="py-2 px-2.5 font-semibold text-white">Age ${row.age}</td>
+          <td data-label="Market Year" class="py-2 px-2.5 font-mono text-indigo-300 font-bold">${row.sampled_india_year}</td>
+          <td data-label="Returns & Inflation" class="py-2 px-2.5 mobile-col-span-2">
             <span class="font-bold ${eqColor}">${row.equity_return_pct >= 0 ? '+' : ''}${row.equity_return_pct}% Eq</span>
             <span class="text-slate-500 mx-1">/</span>
             <span class="text-emerald-300">+${row.debt_return_pct}% FD</span>
             <span class="text-slate-500 mx-1">/</span>
             <span class="text-amber-300">${row.inflation_pct}% Inf</span>
           </td>
-          <td class="py-2 px-2.5 ${incVal > 0 ? 'text-emerald-300 font-semibold' : 'text-slate-500'}">${incVal > 0 ? formatInrCompact(incVal) : '—'}</td>
-          <td class="py-2 px-2.5 ${sipVal > 0 ? 'text-indigo-300 font-semibold' : 'text-slate-500'}">${sipVal > 0 ? formatInrCompact(sipVal) : '—'}</td>
-          <td class="py-2 px-2.5 font-semibold text-white">${formatInrCompact(expVal)}</td>
-          <td class="py-2 px-2.5 ${hasEvents ? 'text-amber-300 font-medium' : 'text-slate-500'}">${eventsText}</td>
-          <td class="py-2 px-2.5 font-bold text-white">${formatInrCompact(row.end_corpus_real)}</td>
+          <td data-label="Income" class="py-2 px-2.5 ${incVal > 0 ? 'text-emerald-300 font-semibold' : 'text-slate-500'}">${incVal > 0 ? formatInrCompact(incVal) : '—'}</td>
+          <td data-label="SIPs" class="py-2 px-2.5 ${sipVal > 0 ? 'text-indigo-300 font-semibold' : 'text-slate-500'}">${sipVal > 0 ? formatInrCompact(sipVal) : '—'}</td>
+          <td data-label="Expenses" class="py-2 px-2.5 font-semibold text-white">${formatInrCompact(expVal)}</td>
+          <td data-label="Events" class="py-2 px-2.5 mobile-col-span-2 ${hasEvents ? 'text-amber-300 font-medium' : 'text-slate-500'}">${eventsText}</td>
+          <td data-label="Ending Wealth" class="py-2 px-2.5 font-bold text-white">${formatInrCompact(row.end_corpus_real)}</td>
         </tr>
       `;
     })

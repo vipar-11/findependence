@@ -204,7 +204,10 @@ class WealthLongevitySimulator(BaseSimulator):
 
         expense_amount = float(cfg["expense_amount"])
         expense_frequency = str(cfg["expense_frequency"]).lower()
-        expense_variance = float(cfg.get("expense_variance_pct") or 0.0) / 100.0
+        raw_global_var = cfg.get("global_variance_pct")
+        global_var_pct = float(raw_global_var) if raw_global_var is not None else None
+        raw_exp_var = float(cfg.get("expense_variance_pct") or 0.0)
+        expense_variance = (global_var_pct if (raw_exp_var <= 0 and global_var_pct is not None) else raw_exp_var) / 100.0
         initial_annual_expense = (
             expense_amount * 12.0 if expense_frequency == "monthly" else expense_amount
         )
@@ -239,10 +242,15 @@ class WealthLongevitySimulator(BaseSimulator):
         default_shock_inr = 2_00_000.0 if has_medical_insurance else 5_00_000.0
         raw_rand_base = cfg.get("random_expense_base_inr")
         rand_exp_base = float(default_shock_inr if raw_rand_base is None else raw_rand_base)
-        rand_exp_var = float(cfg.get("random_expense_variance_pct", 25.0)) / 100.0
+        eff_rand_var_pct = global_var_pct if global_var_pct is not None else float(cfg.get("random_expense_variance_pct", 10.0))
+        rand_exp_var = eff_rand_var_pct / 100.0
         rand_exp_prob = float(cfg.get("random_expense_annual_probability_pct", 15.0)) / 100.0
 
         known_future_expenses = cfg.get("known_future_expenses") or []
+        if global_var_pct is not None:
+            for k_item in known_future_expenses:
+                if isinstance(k_item, dict) and k_item.get("is_recurring") and not k_item.get("variance_pct"):
+                    k_item["variance_pct"] = global_var_pct
 
         num_simulations = int(cfg["num_simulations"])
         sampling_method = cfg["sampling_method"]

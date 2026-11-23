@@ -113,6 +113,12 @@ class WealthLongevityRequest(BaseModel):
         le=100.0,
         description="Optional plus/minus annual variance (%) on base living expenses (0 means no variance)",
     )
+    global_variance_pct: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Optional global cost variance (%) applied across living expenses, recurring goals, and random shocks",
+    )
 
     # Advanced configuration parameters (Inflation comes from historical market data by default)
     base_inflation_rate: float | None = Field(

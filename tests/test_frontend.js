@@ -166,16 +166,15 @@ function getElement(id) {
       lifeInfSlider: '0.5',
       targetAgeSlider: '90',
       taxDragSlider: '10.0',
+      globalVarianceSlider: '10',
       rebalanceFreqSlider: '2',
       randExpBaseLakhsInput: '2.0',
-      randExpVarInput: '25',
       randExpProbInput: '15',
       samplingSelect: 'iid_bootstrap',
       numSimsSelect: '2500',
       newKnownTag: 'Education',
       newKnownYears: '38',
       newKnownLakhs: '20',
-      newKnownVariance: '15',
       newKnownStartYear: '38',
       newKnownEndYear: '90',
       newKnownEveryNYears: '3',
@@ -424,8 +423,15 @@ async function runAllTests() {
     appModule.goToStep(2);
     assert.equal(appModule.state.step, 1);
 
-    // Answer both mandatory questions in Step 1
-    appModule.updateAge('38');
+    // Answer both mandatory questions in Step 1 (and verify typing '4' then '45' does NOT clamp '4' to 18)
+    getElement('ageInput').value = '4';
+    appModule.updateAge('4', false);
+    assert.equal(getElement('ageInput').value, '4');
+    getElement('ageInput').value = '45';
+    appModule.updateAge('45', false);
+    assert.equal(appModule.state.current_age, 45);
+    assert.equal(getElement('ageInput').value, 45);
+    appModule.updateAge('38', true);
     appModule.setMedicalInsurance(true);
     assert.equal(appModule.isStep1Complete(), true);
 
