@@ -78,16 +78,16 @@ class WealthLongevityRequest(BaseModel):
     job_monthly_income: float = Field(default=0.0, ge=0.0, description="Current monthly Job / Business income in INR")
     job_income_years: int = Field(default=0, ge=0, le=60, description="How many years Job / Business income is expected to last")
     job_income_until_age: int | None = Field(default=None, ge=18, le=110, description="Age until which Job / Business income is expected to last")
-    job_income_growth_pct: float = Field(default=7.0, ge=-10.0, le=50.0, description="Expected annual increment (or lower bound) on Job / Business income (%)")
+    job_income_growth_pct: float = Field(default=5.0, ge=-10.0, le=50.0, description="Expected annual increment (or lower bound) on Job / Business income (%)")
     job_income_growth_max_pct: float | None = Field(default=None, ge=-10.0, le=50.0, description="Optional upper bound of annual increment range (%) for uniform distribution")
-    job_income_growth_range: str | None = Field(default=None, max_length=32, description="Optional increment range string such as '5-7%' or '7'")
+    job_income_growth_range: str | None = Field(default=None, max_length=32, description="Optional increment range string such as '5-7%' or '5'")
     rental_monthly_income: float = Field(default=0.0, ge=0.0, description="Current monthly Rental income in INR")
     other_passive_monthly_income: float = Field(default=0.0, ge=0.0, description="Current monthly Other Passive income in INR")
     passive_income_inflation_interval_years: int = Field(
-        default=1,
+        default=3,
         ge=1,
         le=20,
-        description="Every N years that rental and passive income step up to adjust for cumulative inflation",
+        description="Every N years that rental and passive income step up to adjust for cumulative inflation (default 3 years)",
     )
 
     # Ongoing SIP Investments (Step 4)
@@ -149,10 +149,10 @@ class WealthLongevityRequest(BaseModel):
         description="How real estate is treated during retirement",
     )
     property_rental_yield: float = Field(
-        default=2.5,
+        default=0.0,
         ge=0.0,
         le=12.0,
-        description="Net annual rental yield on real estate (% p.a.) when explicit rental income is not entered",
+        description="Optional implicit rental yield on real estate (% p.a.); defaults to 0 so no phantom rent is added",
     )
     property_liquidation_haircut: float = Field(
         default=10.0,

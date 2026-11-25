@@ -300,7 +300,7 @@ def test_random_historical_sampling_and_api_endpoints() -> None:
     assert r1["retirement_readiness"]["evaluated_retirement_age"] == 38
     assert r1["retirement_readiness"]["evaluated_retire_in_years"] == 0
     assert "retire today" not in r1["verdict"]["headline"].lower()
-    assert "Financial Outlook" in r1["verdict"]["badge"]
+    assert r1["verdict"]["badge"] in ("Strong", "Action Required")
     assert "events_by_age_p50" in r1["chart_events"]
     assert "events_by_age_p10" in r1["chart_events"]
 
@@ -382,11 +382,28 @@ def test_random_historical_sampling_and_api_endpoints() -> None:
         outcomes_by_age["40"]["longevity_stats"]["percentiles_years"]["p50"]
         >= outcomes_by_age["38"]["longevity_stats"]["percentiles_years"]["p50"]
     )
-    # And the sampled market year sequence in notable_runs is identical for the same run_number
-    assert (
-        outcomes_by_age["38"]["notable_runs"][0]["year_log"][0]["sampled_india_year"]
-        != 0
+    # Verify year_log in notable_runs has liquid corpus reconciliation fields and job income stops at candidate retirement age
+    age40_log = outcomes_by_age["40"]["notable_runs"][0]["year_log"]
+    # Retiring at Age 40 (r=2): job_income is > 0 at Age 38 & Age 39, and 0 from Age 40 onwards, while rental/passive income continues!
+    assert age40_log[0]["job_income"] > 0
+    assert age40_log[1]["job_income"] > 0
+    assert age40_log[2]["job_income"] == 0
+    assert age40_log[2]["rental_income"] > 0
+    assert age40_log[2]["passive_income"] > 0
+    # Verify exact Starting Liquid Corpus -> Ending Liquid Corpus math reconciliation
+    # Note: outflows_total now includes Tax Drag (expenses + SIPs + tax_drag)
+    row0 = age40_log[0]
+    expected_end_liq = (
+        row0["start_liquid_corpus"]
+        + row0["inflows_total"]
+        - row0["outflows_total"]
+        + row0["sip_contributed"]
+        + row0["property_liquidated_inflow"]
+        + row0["capital_gains_nominal"]
     )
+    assert pytest.approx(row0["end_liquid_corpus"], abs=5.0) == expected_end_liq
+    assert "Start Liquid Corpus:" in row0["math_explanation"]
+    assert "Ending Liquid Corpus:" in row0["math_explanation"]
 
 
 def test_fixed_income_first_withdrawal_and_taxable_rebalancing() -> None:
@@ -427,6 +444,74 @@ def test_fixed_income_first_withdrawal_and_taxable_rebalancing() -> None:
 
     # Year 3 (index 2) has Known Future Expense ("Marriage") inflated by 2 years of 6% CPI
     assert pytest.approx(out["known_expense_incurred"][0, 2], rel=1e-4) == 15_00_000.0 * (1.06**2)
+
+
+def test_bank_first_waterfall_cash_reserve_and_sip_never_redeems() -> None:
+    """Verify:
+    1) Inflows go to bank (cash) first.
+    2) Outflows are paid from bank without dipping below inflation-adjusted initial cash reserve.
+    3) Larger outflows redeem Fixed Income first, then Equity.
+    4) SIPs are NEVER funded by redeeming FI/Equity; they are reduced/paused if bank lacks excess cash.
+    """
+    n_paths, horizon = 2, 3
+    eq = np.full((n_paths, horizon), 0.10)
+    fi = np.full((n_paths, horizon), 0.06)
+    prop = np.full((n_paths, horizon), 0.05)
+    cpi = np.full((n_paths, horizon), 0.06)
+
+    # Case A: No income, 10L cash reserve, 12L expense, 6L scheduled SIP
+    # Bank starts at 10L (= reserve), so expenses cannot dip below reserve -> 12L redeemed from FI.
+    # Remaining bank above reserve is 0 -> SIP MUST be paused (0), NOT redeemed from FI/Equity!
+    out_paused = simulate_portfolio_paths(
+        total_corpus=1_10_00_000.0,
+        equity_weight=50 / 110,
+        fixed_income_weight=50 / 110,
+        property_weight=0.0,
+        cash_weight=10 / 110,
+        initial_annual_expense=12_00_000.0,
+        equity_returns=eq,
+        fixed_income_returns=fi,
+        property_returns=prop,
+        inflation_rates=cpi,
+        equity_sip_annual=6_00_000.0,
+        sip_duration_years=3,
+        fixed_income_tax_rate=0.10,
+        equity_tax_rate=0.10,
+        rebalance_enabled=False,
+        home_improvement_enabled=False,
+        random_expense_enabled=False,
+    )
+    assert out_paused["total_sip_nominal"][0, 0] == 0.0
+    assert out_paused["withdrawn_from_fi_gross"][0, 0] > 0.0
+    assert out_paused["withdrawn_from_eq_gross"][0, 0] == 0.0
+
+    # Case B: 15L job income, 10L cash reserve, 12L expense, 6L scheduled SIP
+    # Bank receives 15L -> 25L; pays 12L expense from bank (leaves 13L >= 10L reserve) -> 0 redemption!
+    # Excess bank cash above 10L reserve = 3L -> SIP is reduced from 6L to 3L (never redeems FI/Eq!).
+    out_reduced = simulate_portfolio_paths(
+        total_corpus=1_10_00_000.0,
+        equity_weight=50 / 110,
+        fixed_income_weight=50 / 110,
+        property_weight=0.0,
+        cash_weight=10 / 110,
+        initial_annual_expense=12_00_000.0,
+        equity_returns=eq,
+        fixed_income_returns=fi,
+        property_returns=prop,
+        inflation_rates=cpi,
+        job_annual_income=15_00_000.0,  # 15L/yr
+        job_income_years=3,
+        equity_sip_annual=6_00_000.0,  # 6L/yr scheduled
+        sip_duration_years=3,
+        fixed_income_tax_rate=0.10,
+        equity_tax_rate=0.10,
+        rebalance_enabled=False,
+        home_improvement_enabled=False,
+        random_expense_enabled=False,
+    )
+    assert out_reduced["withdrawn_from_fi_gross"][0, 0] == 0.0
+    assert out_reduced["withdrawn_from_eq_gross"][0, 0] == 0.0
+    assert pytest.approx(out_reduced["total_sip_nominal"][0, 0], abs=1.0) == 3_00_000.0
 
 
 def test_self_contained_static_css_and_js_no_external_cdns() -> None:
@@ -696,72 +781,58 @@ def test_finance_and_simulator_verdict_branches() -> None:
     )
     assert res_prop_only["years_lasted"][0] == 0.0
 
-    # Test WealthLongevitySimulator verdicts: retire_ready, borderline, at_risk, shortfall
+    # Test WealthLongevitySimulator 6-scenario verdicts
     sim = WealthLongevitySimulator()
-    for status_target, stats_mock in [
-        (
-            "retire_ready",
-            {
-                "success_probability_pct": 92.0,
-                "percentiles_years": {"p10": 35.0, "p50": 55.0},
-                "depletion_ages": {"p10": 75.0, "p50": 95.0},
-            },
-        ),
-        (
-            "borderline",
-            {
-                "success_probability_pct": 72.0,
-                "percentiles_years": {"p10": 22.0, "p50": 48.0},
-                "depletion_ages": {"p10": 62.0, "p50": 88.0},
-            },
-        ),
-        (
-            "at_risk",
-            {
-                "success_probability_pct": 45.0,
-                "percentiles_years": {"p10": 15.0, "p50": 32.0},
-                "depletion_ages": {"p10": 55.0, "p50": 72.0},
-            },
-        ),
-        (
-            "shortfall",
-            {
-                "success_probability_pct": 12.0,
-                "percentiles_years": {"p10": 8.0, "p50": 16.0},
-                "depletion_ages": {"p10": 48.0, "p50": 56.0},
-            },
-        ),
-    ]:
-        v_no_job = sim._build_verdict(
-            longevity_stats=stats_mock,
-            current_age=40,
-            life_expectancy=85,
-            target_horizon=45,
-            max_sim_horizon=55,
-            swr_on_drawable=3.5,
-            benchmark_swr=3.2,
-            required_drawable_corpus=4_00_00_000.0,
-            initial_drawable_corpus=3_00_00_000.0,
-            max_search_years=0,
-        )
-        assert v_no_job["status"] == status_target
-        assert "retire today" not in v_no_job["headline"].lower()
+    stats_strong = {
+        "success_probability_pct": 92.0,
+        "percentiles_years": {"p10": 35.0, "p50": 55.0},
+        "depletion_ages": {"p10": 75.0, "p50": 95.0},
+    }
+    stats_shortfall = {
+        "success_probability_pct": 45.0,
+        "percentiles_years": {"p10": 15.0, "p50": 32.0},
+        "depletion_ages": {"p10": 55.0, "p50": 72.0},
+    }
+    common_v = dict(
+        current_age=40,
+        life_expectancy=85,
+        target_horizon=45,
+        max_sim_horizon=55,
+        swr_on_drawable=3.5,
+        benchmark_swr=3.2,
+        required_drawable_corpus=4_00_00_000.0,
+        initial_drawable_corpus=3_00_00_000.0,
+    )
+    # 1. Already retired, has enough wealth
+    v1 = sim._build_verdict(longevity_stats=stats_strong, max_search_years=0, **common_v)
+    assert v1["status"] == "strong" and v1["badge"] == "Strong"
+    assert v1["headline"] == "Your retirement is well-funded"
+    assert "stress-tested" in v1["recommendation"]
 
-        v_with_job = sim._build_verdict(
-            longevity_stats=stats_mock,
-            current_age=40,
-            life_expectancy=85,
-            target_horizon=45,
-            max_sim_horizon=55,
-            swr_on_drawable=3.5,
-            benchmark_swr=3.2,
-            required_drawable_corpus=4_00_00_000.0,
-            initial_drawable_corpus=3_00_00_000.0,
-            best_r=0 if status_target == "retire_ready" else None,
-            max_search_years=5,
-            selected_r=0 if status_target == "retire_ready" else 5,
-        )
-        assert v_with_job["status"] == status_target
+    # 2. Working, can retire immediately
+    v2 = sim._build_verdict(longevity_stats=stats_strong, max_search_years=5, best_r=0, selected_r=0, **common_v)
+    assert v2["status"] == "financial_freedom" and v2["badge"] == "Financial Freedom"
+    assert v2["headline"] == "You have enough to retire today"
+
+    # 3. Working, can retire early
+    v3 = sim._build_verdict(longevity_stats=stats_strong, max_search_years=5, best_r=2, selected_r=2, **common_v)
+    assert v3["status"] == "ahead_of_plan" and v3["badge"] == "Ahead of Plan"
+    assert v3["headline"] == "You can retire 3 years early, at age 42"
+
+    # 4. Working, on track for planned retirement
+    v4 = sim._build_verdict(longevity_stats=stats_strong, max_search_years=5, best_r=5, selected_r=5, **common_v)
+    assert v4["status"] == "on_track" and v4["badge"] == "On Track"
+    assert v4["headline"] == "Stay the course until age 45"
+
+    # 5. Working, shortfall at planned retirement
+    v5 = sim._build_verdict(longevity_stats=stats_shortfall, max_search_years=5, best_r=None, selected_r=5, **common_v)
+    assert v5["status"] == "needs_attention" and v5["badge"] == "Needs Attention"
+    assert v5["headline"] == "Projected shortfall at age 45"
+
+    # 6. Retired, wealth not likely to last
+    v6 = sim._build_verdict(longevity_stats=stats_shortfall, max_search_years=0, **common_v)
+    assert v6["status"] == "action_required" and v6["badge"] == "Action Required"
+    assert v6["headline"] == "Your corpus faces an early depletion risk"
 
     # Chart event annotations fallback when notable_runs is empty
     ann = sim._build_chart_event_annotations(

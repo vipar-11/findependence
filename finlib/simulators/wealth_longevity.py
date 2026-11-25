@@ -71,12 +71,12 @@ class WealthLongevitySimulator(BaseSimulator):
             "job_monthly_income": 0.0,
             "job_income_years": 0,
             "job_income_until_age": None,
-            "job_income_growth_pct": 0.0,
+            "job_income_growth_pct": 5.0,
             "job_income_growth_max_pct": None,
             "job_income_growth_range": None,
             "rental_monthly_income": 0.0,
             "other_passive_monthly_income": 0.0,
-            "passive_income_inflation_interval_years": 1,
+            "passive_income_inflation_interval_years": 3,
             # Step 4: Ongoing SIPs
             "equity_sip_monthly": 0.0,
             "equity_sip_stepup_pct": 0.0,
@@ -91,7 +91,7 @@ class WealthLongevitySimulator(BaseSimulator):
             "lifestyle_inflation_rate": 0.5,
             "post_retirement_expense_multiplier": 100.0,
             "property_mode": "liquidate_fallback",
-            "property_rental_yield": 2.5,
+            "property_rental_yield": 0.0,
             "property_liquidation_haircut": 10.0,
             # Configuration defaults (prefilled)
             "rebalance_annually": True,
@@ -819,14 +819,33 @@ class WealthLongevitySimulator(BaseSimulator):
         years_lasted = mc_out["years_lasted"]
         drawable_real = mc_out["drawable_real"][:, :display_steps]
         drawable_nom = mc_out["drawable_nominal"][:, :display_steps]
+        liquid_nom = mc_out["liquid_corpus_nominal"][:, :display_steps]
+        liquid_real = mc_out["liquid_corpus_real"][:, :display_steps]
         base_exp_nom = mc_out["base_expenses_nominal"]
         tot_exp_nom = mc_out["expenses_nominal"]
         home_imp_nom = mc_out["home_improvement_nominal"]
         rand_shock_nom = mc_out["random_shock_nominal"]
         known_ev_nom = mc_out["known_event_nominal"]
         known_tags_by_year = mc_out["known_tags_by_year"]
+        job_inc_nom = mc_out["job_income_nominal"]
+        rent_inc_nom = mc_out["rental_income_nominal"]
+        pass_inc_nom = mc_out["passive_income_nominal"]
         tot_inc_nom = mc_out["total_income_nominal"]
+        eq_sip_nom = mc_out["eq_sip_nominal"]
+        fi_sip_nom = mc_out["fi_sip_nominal"]
         tot_sip_nom = mc_out["total_sip_nominal"]
+        cap_gains_nom = mc_out["capital_gains_nominal"]
+        prop_liq_nom = mc_out["property_liquidated_nominal"]
+        cash_bal_nom = mc_out["cash_balance_nominal"]
+        eq_bal_nom = mc_out["eq_balance_nominal"]
+        fi_bal_nom = mc_out["fi_balance_nominal"]
+        bank_paid_nom = mc_out["bank_paid_expenses_nominal"]
+        cash_res_nom = mc_out["cash_reserve_floor_nominal"]
+        liq_before_ret_nom = mc_out["liquid_before_returns_nominal"]
+        eq_cg_nom = mc_out["eq_cap_gains_nominal"]
+        fi_cg_nom = mc_out["fi_cap_gains_nominal"]
+        cash_cg_nom = mc_out["cash_cap_gains_nominal"]
+        cum_cpi_mat = mc_out["cumulative_cpi"]
         withdrawn_fi = mc_out["withdrawn_fi_gross"]
         withdrawn_eq = mc_out["withdrawn_eq_gross"]
         withdrawal_tax = mc_out["withdrawal_tax_paid"]
@@ -882,6 +901,9 @@ class WealthLongevitySimulator(BaseSimulator):
                 start_corp = float(drawable_nom[sim_idx, t])
                 end_corp = float(drawable_nom[sim_idx, t + 1])
                 end_real = float(drawable_real[sim_idx, t + 1])
+                start_liq = float(liquid_nom[sim_idx, t])
+                end_liq = float(liquid_nom[sim_idx, t + 1])
+                end_liq_real = float(liquid_real[sim_idx, t + 1])
                 if start_corp <= 0 and t > 0:
                     break
 
@@ -895,11 +917,21 @@ class WealthLongevitySimulator(BaseSimulator):
                 else:
                     reb_text = "—"
 
+                base_exp_val = float(base_exp_nom[sim_idx, t])
+                tot_exp_val = float(tot_exp_nom[sim_idx, t])
                 hi_val = float(home_imp_nom[sim_idx, t])
                 rs_val = float(rand_shock_nom[sim_idx, t])
                 ke_val = float(known_ev_nom[sim_idx, t])
+                job_val = float(job_inc_nom[sim_idx, t])
+                rent_val = float(rent_inc_nom[sim_idx, t])
+                pass_val = float(pass_inc_nom[sim_idx, t])
                 inc_val = float(tot_inc_nom[sim_idx, t])
+                eq_sip_val = float(eq_sip_nom[sim_idx, t])
+                fi_sip_val = float(fi_sip_nom[sim_idx, t])
                 sip_val = float(tot_sip_nom[sim_idx, t])
+                outflows_total = tot_exp_val + sip_val
+                cap_gain_val = float(cap_gains_nom[sim_idx, t])
+                prop_liq_val = float(prop_liq_nom[sim_idx, t])
 
                 event_badges: list[str] = []
                 if t in known_tags_by_year and ke_val > 0:
@@ -909,12 +941,17 @@ class WealthLongevitySimulator(BaseSimulator):
                     event_badges.append(f"🏠 Home Imp: {format_inr_compact(hi_val)}")
                 if rs_val > 0:
                     event_badges.append(f"⚡ Shock: {format_inr_compact(rs_val)}")
+                if prop_liq_val > 0:
+                    event_badges.append(f"🏡 Property Liquidated: +{format_inr_compact(prop_liq_val)}")
                 if reb_text != "—":
                     event_badges.append(f"⚖️ {reb_text}")
 
                 w_fi = float(withdrawn_fi[sim_idx, t])
                 w_eq = float(withdrawn_eq[sim_idx, t])
                 w_tax = float(withdrawal_tax[sim_idx, t])
+                tot_tax_val = w_tax + r_tax
+                # Tax Drag adds directly to the Outflow
+                outflows_total = tot_exp_val + sip_val + tot_tax_val
                 if w_fi > 0 and w_eq <= 1.0:
                     source_str = f"From FD/Cash: {format_inr_compact(w_fi)} (Tax {format_inr_compact(w_tax)})"
                 elif w_fi > 0 and w_eq > 1.0:
@@ -922,7 +959,21 @@ class WealthLongevitySimulator(BaseSimulator):
                 elif w_eq > 1.0:
                     source_str = f"From Equity: {format_inr_compact(w_eq)} (Tax {format_inr_compact(w_tax)})"
                 else:
-                    source_str = "Covered by Income"
+                    source_str = "Covered by Bank / Income"
+
+                # Build exact step-by-step math string explaining how Starting Liquid Corpus became Ending Liquid Corpus
+                math_lines = [
+                    f"Start Liquid Corpus: {format_inr_compact(start_liq)}",
+                    f"+ Inflows (to Bank): +{format_inr_compact(inc_val)}",
+                    f"- Outflows (Exp + SIPs + Tax Drag): -{format_inr_compact(outflows_total)}",
+                ]
+                if sip_val > 0:
+                    math_lines.append(f"+ SIPs Invested into Eq/FD: +{format_inr_compact(sip_val)}")
+                if prop_liq_val > 0:
+                    math_lines.append(f"+ Property Liquidated: +{format_inr_compact(prop_liq_val)}")
+                cg_sign = "+" if cap_gain_val >= 0 else ""
+                math_lines.append(f"± Capital Gains (on remaining corpus): {cg_sign}{format_inr_compact(cap_gain_val)}")
+                math_lines.append(f"= Ending Liquid Corpus: {format_inr_compact(end_liq)}")
 
                 year_log.append(
                     {
@@ -934,21 +985,51 @@ class WealthLongevitySimulator(BaseSimulator):
                         "inflation_pct": round(float(cpi_ret[sim_idx, t]) * 100.0, 1),
                         "lifestyle_inflation_pct": lifestyle_inflation_pct,
                         "start_corpus": round(start_corp, 0),
-                        "base_living_expense": round(float(base_exp_nom[sim_idx, t]), 0),
+                        "start_liquid_corpus": round(start_liq, 0),
+                        "start_cash": round(float(cash_bal_nom[sim_idx, t]), 0),
+                        "start_fi": round(float(fi_bal_nom[sim_idx, t]), 0),
+                        "start_eq": round(float(eq_bal_nom[sim_idx, t]), 0),
+                        "cash_reserve_floor": round(float(cash_res_nom[sim_idx, t]), 0),
+                        "bank_paid_expenses": round(float(bank_paid_nom[sim_idx, t]), 0),
+                        "withdrawn_fi_gross": round(w_fi, 0),
+                        "withdrawn_eq_gross": round(w_eq, 0),
+                        "rebalance_sold_gross": round(r_sold, 0),
+                        "liquid_before_returns": round(float(liq_before_ret_nom[sim_idx, t]), 0),
+                        "eq_cap_gains": round(float(eq_cg_nom[sim_idx, t]), 0),
+                        "fi_cap_gains": round(float(fi_cg_nom[sim_idx, t]), 0),
+                        "cash_cap_gains": round(float(cash_cg_nom[sim_idx, t]), 0),
+                        "end_cash": round(float(cash_bal_nom[sim_idx, t + 1]), 0),
+                        "end_fi": round(float(fi_bal_nom[sim_idx, t + 1]), 0),
+                        "end_eq": round(float(eq_bal_nom[sim_idx, t + 1]), 0),
+                        "cumulative_cpi_factor": round(float(cum_cpi_mat[sim_idx, t + 1]), 4),
+                        "base_living_expense": round(base_exp_val, 0),
+                        "job_income": round(job_val, 0),
+                        "rental_income": round(rent_val, 0),
+                        "passive_income": round(pass_val, 0),
                         "income_received": round(inc_val, 0),
+                        "inflows_total": round(inc_val, 0),
+                        "eq_sip": round(eq_sip_val, 0),
+                        "fi_sip": round(fi_sip_val, 0),
                         "sip_contributed": round(sip_val, 0),
+                        "outflows_total": round(outflows_total, 0),
                         "home_improvement_expense": round(hi_val, 0),
                         "random_shock_expense": round(rs_val, 0),
                         "known_event_expense": round(ke_val, 0),
                         "special_events_summary": " • ".join(event_badges) if event_badges else "—",
                         "combined_events_summary": " • ".join(event_badges) if event_badges else "—",
-                        "withdrawal": round(float(tot_exp_nom[sim_idx, t]), 0),
+                        "withdrawal": round(tot_exp_val, 0),
                         "withdrawal_source_summary": source_str,
                         "withdrawal_tax_paid": round(w_tax, 0),
                         "rebalance_activity": reb_text,
                         "rebalance_tax_paid": round(r_tax, 0),
+                        "total_tax_paid": round(tot_tax_val, 0),
+                        "property_liquidated_inflow": round(prop_liq_val, 0),
+                        "capital_gains_nominal": round(cap_gain_val, 0),
                         "end_corpus_nominal": round(end_corp, 0),
                         "end_corpus_real": round(end_real, 0),
+                        "end_liquid_corpus": round(end_liq, 0),
+                        "end_liquid_corpus_real": round(end_liq_real, 0),
+                        "math_explanation": " | ".join(math_lines),
                     }
                 )
             notable_runs.append(
@@ -1073,136 +1154,82 @@ class WealthLongevitySimulator(BaseSimulator):
         p10_age = longevity_stats["depletion_ages"]["p10"]
         p50_age = longevity_stats["depletion_ages"]["p50"]
 
-        median_label = (
-            f"past Age {life_expectancy}+"
-            if p50_yrs >= max_sim_horizon - 0.5
-            else f"until Age {p50_age:.0f}"
+        yy_age_ge_sim_horizon = p50_yrs >= max_sim_horizon - 0.5
+        yy_age = (
+            f"{life_expectancy}+"
+            if yy_age_ge_sim_horizon
+            else f"{p50_age:.0f}"
         )
-        worst_label = (
-            f"past Age {life_expectancy}+"
-            if p10_yrs >= max_sim_horizon - 0.5
-            else f"until Age {p10_age:.0f}"
+
+        zz_age_ge_sim_horizon = p10_yrs >= max_sim_horizon - 0.5
+        zz_age = (
+            f"{life_expectancy}+"
+            if zz_age_ge_sim_horizon
+            else f"{p10_age:.0f}"
         )
+        median_label = f"past Age {life_expectancy}+" if p50_yrs >= max_sim_horizon - 0.5 else f"until Age {p50_age:.0f}"
 
         eval_r = selected_r if selected_r is not None else (best_r if best_r is not None else max_search_years)
         eval_age = current_age + eval_r
-        shortfall = max(0.0, required_drawable_corpus - initial_drawable_corpus)
 
-        # Case A: No active job/business income (max_search_years == 0)
-        # Do NOT suggest "you can retire today" — focus purely on how long wealth lasts.
+        # 6-Scenario Structured Financial Outlook Verdict
         if max_search_years <= 0:
+            # Already retired (no active job / business income)
             if success_pct >= TARGET_RETIREMENT_SUCCESS_RATE_PCT:
-                status = "retire_ready"
-                badge = f"Strong Financial Outlook — {success_pct:.1f}% Success Rate"
-                headline = (
-                    f"Your wealth lasts {median_label} in the median case and {worst_label} in the worst case."
-                )
+                # Scenario 1: Already retired, has enough wealth
+                status = "strong"
+                badge = "Strong"
+                headline = "Your retirement is well-funded"
                 recommendation = (
-                    f"Your portfolio has a {success_pct:.1f}% success rate of sustaining your expenses "
-                    f"all the way through Age {life_expectancy} (above the 85% target)."
-                )
-            elif success_pct >= 65.0:
-                status = "borderline"
-                badge = f"Moderate Financial Outlook — {success_pct:.1f}% Success Rate"
-                headline = (
-                    f"Your wealth lasts {median_label} in the median case and {worst_label} in the worst case."
-                )
-                recommendation = (
-                    f"Your savings sustain past Age {life_expectancy} in a typical market cycle ({success_pct:.1f}% success rate), "
-                    f"though severe market crashes can deplete funds {worst_label}. "
-                    f"Accessible savings of ~{format_inr_compact(required_drawable_corpus)} would reach the 85% target."
-                )
-            elif success_pct >= 35.0:
-                status = "at_risk"
-                badge = f"Watchful Financial Outlook — {success_pct:.1f}% Success Rate"
-                headline = (
-                    f"Your wealth lasts {median_label} in the median case and {worst_label} in the worst case."
-                )
-                recommendation = (
-                    f"Your portfolio has a {success_pct:.1f}% success rate of lasting through Age {life_expectancy}. "
-                    f"Holding ~{format_inr_compact(required_drawable_corpus)} in accessible savings or moderating annual expenses would reach the 85% target."
+                    f"Projected to last to comfortably beyond age {zz_age}."
+                ) if zz_age_ge_sim_horizon else (
+                    f"Projected to last to between age {zz_age} and {yy_age}."                    
                 )
             else:
-                status = "shortfall"
-                badge = f"Constrained Financial Outlook — {success_pct:.1f}% Success Rate"
-                headline = (
-                    f"Your wealth is projected to last {median_label} in the median case and {worst_label} in the worst case."
-                )
+                # Scenario 6: Retired, wealth not likely to last
+                status = "action_required"
+                badge = "Action Required"
+                headline = "Your corpus faces an early depletion risk"
                 recommendation = (
-                    f"With a {success_pct:.1f}% success rate of reaching Age {life_expectancy}, "
-                    f"approximately {format_inr_compact(shortfall)} more in accessible savings "
-                    f"(target ~{format_inr_compact(required_drawable_corpus)}) or lower annual expenses would be needed to sustain through Age {life_expectancy}."
+                    f"Funds are projected to run out between age {zz_age} and {yy_age}."
                 )
-        # Case B: User has active job/business income (max_search_years > 0)
-        elif selected_r is not None and best_r is not None and selected_r < best_r:
-            rec_age = current_age + best_r
-            status = "borderline" if success_pct >= 65.0 else ("at_risk" if success_pct >= 35.0 else "shortfall")
-            badge = f"Inspecting Earlier Retirement at Age {eval_age} ({success_pct:.1f}% Success Rate)"
-            headline = (
-                f"If you retire earlier at Age {eval_age} (instead of suggested Age {rec_age}), "
-                f"your wealth lasts {median_label} in the median case with a {success_pct:.1f}% success rate."
-            )
-            recommendation = (
-                f"In the worst case, retiring at Age {eval_age} means your wealth lasts {worst_label}. "
-                f"Working until suggested Age {rec_age} raises your success rate past the 85% target."
-            )
-        elif best_r == 0 and eval_r == 0:
-            status = "retire_ready"
-            badge = f"Suggested Retirement Age: Age {eval_age} (Retire Now)"
-            headline = (
-                f"You can retire today at Age {eval_age}! Your wealth lasts {median_label} in the median case "
-                f"with a {success_pct:.1f}% success rate of lasting until Age {life_expectancy}."
-            )
-            recommendation = (
-                f"You have already crossed the 85% success rate target. Even in the worst case, "
-                f"your money lasts {worst_label}."
-            )
-        elif best_r is not None and eval_r >= best_r:
-            status = "retire_ready"
-            today_sr = retire_today_success_pct if retire_today_success_pct is not None else 0.0
-            badge = f"Suggested Retirement Age: Age {current_age + best_r} (in {best_r} {'Year' if best_r == 1 else 'Years'})"
-            headline = (
-                f"Retiring at Age {eval_age} gives you a "
-                f"{success_pct:.1f}% success rate of your wealth lasting until Age {life_expectancy}."
-            )
-            recommendation = (
-                f"If you retired today at Age {current_age}, your success rate would be {today_sr:.1f}%. "
-                f"Continuing your income and SIPs until Age {eval_age} reaches the 85% target "
-                f"(wealth lasts {median_label} in the median case and {worst_label} in the worst case)."
-            )
-        elif success_pct >= 65.0:
-            status = "borderline"
-            badge = f"Close to Target — {success_pct:.1f}% Success Rate at Age {eval_age}"
-            headline = (
-                f"At Age {eval_age}, your wealth lasts {median_label} in the median case with a "
-                f"{success_pct:.1f}% success rate (target is 85%)."
-            )
-            recommendation = (
-                f"In the median case your money comfortably outlasts Age {life_expectancy}, "
-                f"but in the worst case your savings last {worst_label}. "
-                f"Working a couple more years or building accessible savings toward {format_inr_compact(required_drawable_corpus)} will reach the 85% success rate."
-            )
-        elif success_pct >= 35.0:
-            status = "at_risk"
-            badge = f"Not Yet at 85% Target — {success_pct:.1f}% Success Rate at Age {eval_age}"
-            headline = (
-                f"At Age {eval_age}, your savings last {median_label} in the median case, "
-                f"giving a {success_pct:.1f}% success rate of reaching Age {life_expectancy}."
-            )
-            recommendation = (
-                f"In the worst case, funds last {worst_label}. "
-                f"To hit the 85% success rate for Age {life_expectancy}, aim to extend your earning/SIP years or build savings closer to {format_inr_compact(required_drawable_corpus)}."
-            )
+        elif success_pct >= TARGET_RETIREMENT_SUCCESS_RATE_PCT:
+            # Working, meets target at evaluated retirement age
+            if eval_r == 0:
+                # Scenario 2: Working, can retire immediately
+                status = "financial_freedom"
+                badge = "Financial Freedom"
+                headline = "You have enough to retire today"
+                recommendation = (
+                    f"Your corpus can comfortably sustain your lifestyle beyond age {zz_age}."
+                ) if zz_age_ge_sim_horizon else (
+                    f"Your corpus can sustain your lifestyle between age {zz_age} and {yy_age}."
+                )
+            elif eval_r < max_search_years:
+                # Scenario 3: Working, can retire early
+                years_from_now = eval_r
+                yr_word = "year" if years_from_now == 1 else "years"
+                status = "ahead_of_plan"
+                badge = "Ahead of Plan"
+                headline = f"You can retire {years_from_now} {yr_word} from now, at age {eval_age}"
+                recommendation = (
+                    f"Even if you stop working at {eval_age}, your wealth lasts until between age {zz_age} and {yy_age}."
+                )
+            else:
+                # Scenario 4: Working, on track for planned retirement
+                status = "on_track"
+                badge = "On Track"
+                headline = f"Stay the course until age {eval_age}"
+                recommendation = (
+                    f"Retiring at your {eval_age} keeps you funded until between age {zz_age} and {yy_age}."
+                )
         else:
-            status = "shortfall"
-            badge = f"More Saving Years Needed — {success_pct:.1f}% Success Rate at Age {eval_age}"
-            headline = (
-                f"At Age {eval_age}, your savings are projected to last {median_label} in the median case "
-                f"with a {success_pct:.1f}% success rate (below the 85% target for Age {life_expectancy})."
-            )
+            # Scenario 5: Working, shortfall at evaluated / planned retirement
+            status = "needs_attention"
+            badge = "Needs Attention"
+            headline = f"Projected shortfall"
             recommendation = (
-                f"You need approximately {format_inr_compact(shortfall)} more in savings "
-                f"(target ~{format_inr_compact(required_drawable_corpus)}) or additional years of income and SIPs to reach an 85% success rate."
+                f"At your current pace, funds may deplete between age {zz_age} and {yy_age}."
             )
 
         return {

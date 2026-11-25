@@ -246,18 +246,18 @@
       if (yMax <= 0) yMax = 100;
       const yMin = typeof yOpts.min === 'number' ? yOpts.min : 0;
 
-      const leftPad = 68;
-      const rightPad = 18;
-      const bottomPad = 32;
+      const leftPad = width < 480 ? 58 : 68;
+      const rightPad = 14;
+      const bottomPad = width < 480 ? 44 : 34;
       const plotW = Math.max(50, width - leftPad - rightPad);
       const plotH = Math.max(50, height - topPad - bottomPad);
 
       this._plotArea = { left: leftPad, top: topPad, width: plotW, height: plotH, mode: 'x', count: labels.length };
       this._linePointsByVisibleIdx = [];
 
-      const yTicks = 5;
+      const yTicks = width < 480 ? 4 : 5;
       ctx.save();
-      ctx.font = '11px system-ui, -apple-system, sans-serif';
+      ctx.font = '10px system-ui, -apple-system, sans-serif';
       for (let i = 0; i <= yTicks; i++) {
         const frac = i / yTicks;
         const val = yMin + (yMax - yMin) * (1 - frac);
@@ -270,21 +270,40 @@
         ctx.lineTo(leftPad + plotW, py);
         ctx.stroke();
 
+        // Tilt Y-axis labels by 45 degrees so they never overlap on compact/mobile displays
+        ctx.save();
         ctx.fillStyle = (yOpts.ticks && yOpts.ticks.color) || '#94a3b8';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
-        ctx.fillText(this._formatTick(yOpts, val), leftPad - 8, py);
+        if (typeof ctx.translate === 'function' && typeof ctx.rotate === 'function') {
+          ctx.translate(leftPad - 8, py);
+          ctx.rotate(-Math.PI / 4);
+          ctx.fillText(this._formatTick(yOpts, val), 0, 0);
+        } else {
+          ctx.fillText(this._formatTick(yOpts, val), leftPad - 8, py);
+        }
+        ctx.restore();
       }
 
       const n = labels.length;
-      const maxTicks = (xOpts.ticks && xOpts.ticks.maxTicksLimit) || 10;
+      const maxTicks = width < 480 ? 6 : (xOpts.ticks && xOpts.ticks.maxTicksLimit) || 10;
       const step = Math.max(1, Math.ceil(n / maxTicks));
       for (let i = 0; i < n; i += step) {
         const px = leftPad + (n > 1 ? (i / (n - 1)) * plotW : plotW / 2);
+        ctx.save();
         ctx.fillStyle = (xOpts.ticks && xOpts.ticks.color) || '#94a3b8';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillText(String(labels[i]), px, topPad + plotH + 8);
+        if (width < 480 && typeof ctx.translate === 'function' && typeof ctx.rotate === 'function') {
+          ctx.translate(px, topPad + plotH + 8);
+          ctx.rotate(-Math.PI / 4);
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'top';
+          ctx.fillText(String(labels[i]), 0, 0);
+        } else {
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText(String(labels[i]), px, topPad + plotH + 8);
+        }
+        ctx.restore();
       }
 
       visible.forEach(({ ds, idx: origIdx }, visIdx) => {
@@ -434,10 +453,18 @@
         ctx.lineTo(leftPad + plotW, py);
         ctx.stroke();
 
+        ctx.save();
         ctx.fillStyle = '#94a3b8';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
-        ctx.fillText(this._formatTick(yOpts, Math.round(val * 10) / 10), leftPad - 8, py);
+        if (typeof ctx.translate === 'function' && typeof ctx.rotate === 'function') {
+          ctx.translate(leftPad - 8, py);
+          ctx.rotate(-Math.PI / 4);
+          ctx.fillText(this._formatTick(yOpts, Math.round(val * 10) / 10), 0, 0);
+        } else {
+          ctx.fillText(this._formatTick(yOpts, Math.round(val * 10) / 10), leftPad - 8, py);
+        }
+        ctx.restore();
       }
 
       if (this.options.targetLine && typeof this.options.targetLine.value === 'number') {

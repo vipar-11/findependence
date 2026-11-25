@@ -145,6 +145,7 @@ code {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+.bg-sky-500\/20 { background-color: rgba(14, 165, 233, 0.2); }
 
 .data-table {
   width: 100%;
@@ -246,6 +247,7 @@ code {
    -------------------------------------------------------------------------- */
 .p-0\.5 { padding: 0.125rem; }
 .p-1 { padding: 0.25rem; }
+.p-2 { padding: 0.5rem; }
 .p-3 { padding: 0.75rem; }
 .p-3\.5 { padding: 0.875rem; }
 .p-4 { padding: 1rem; }
@@ -693,6 +695,89 @@ input[type="range"].slider-amber::-webkit-slider-thumb {
   display: block;
 }
 
+/* Table cell breakup & row math explainer tooltips */
+.cell-tip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: help;
+  border-bottom: 1px dotted rgba(148, 163, 184, 0.45);
+}
+
+.cell-tip-box {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  min-width: 220px;
+  max-width: 290px;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.625rem;
+  background-color: #020617;
+  border: 1px solid var(--indigo-500);
+  color: var(--slate-200);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+  white-space: pre-line;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.75);
+  z-index: 50;
+  pointer-events: none;
+  text-align: left;
+}
+
+.cell-tip-wrap.cell-tip-right .cell-tip-box {
+  left: auto;
+  right: 0;
+}
+
+.cell-tip-wrap:hover .cell-tip-box,
+.cell-tip-wrap:focus-within .cell-tip-box {
+  display: block;
+}
+
+/* Inline Expandable Year-by-Year Math Audit Panel (Desktop & Mobile Optimized) */
+.year-math-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 0.625rem;
+}
+
+@media (min-width: 768px) {
+  .year-math-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.year-math-card {
+  background-color: rgba(15, 23, 42, 0.92);
+  border: 1px solid var(--slate-800);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+}
+
+.year-math-line {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.year-math-lbl {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.year-math-val {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-family: var(--mono);
+  text-align: right;
+}
+
 /* --------------------------------------------------------------------------
    Mobile Web Optimization & Uncramped Responsive Simulation Output
    -------------------------------------------------------------------------- */
@@ -745,6 +830,24 @@ input[type="range"].slider-amber::-webkit-slider-thumb {
     padding-top: 0.25rem !important;
     border-top: 1px solid rgba(30, 41, 59, 0.6);
   }
+  .mobile-stack-table tr.year-math-inline-row {
+    display: block !important;
+    padding: 0.625rem !important;
+    margin-top: -0.375rem;
+    margin-bottom: 0.75rem;
+    background-color: #020617;
+    border: 1px solid rgba(99, 102, 241, 0.45);
+    border-radius: 0.875rem;
+  }
+  .mobile-stack-table tr.year-math-inline-row td {
+    display: block !important;
+    width: 100%;
+    padding: 0 !important;
+  }
+  .mobile-stack-table tr.year-math-inline-row td::before {
+    display: none !important;
+    content: none !important;
+  }
 
   .help-tooltip-box {
     left: 0;
@@ -787,8 +890,12 @@ input[type="range"].slider-amber::-webkit-slider-thumb {
   .sm\:flex-row { flex-direction: row; }
   .sm\:items-center { align-items: center; }
   .sm\:w-auto { width: auto; }
+  .sm\:gap-2 { gap: 0.5rem; }
+  .sm\:p-3 { padding: 0.75rem; }
   .sm\:p-8 { padding: 2rem; }
   .sm\:px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+  .sm\:text-\[11px\] { font-size: 11px; line-height: 1rem; }
+  .sm\:text-xs { font-size: 0.75rem; line-height: 1rem; }
   .sm\:text-sm { font-size: 0.875rem; line-height: 1.25rem; }
   .sm\:text-2xl { font-size: 1.5rem; line-height: 2rem; }
   .sm\:text-3xl { font-size: 1.875rem; line-height: 2.25rem; }

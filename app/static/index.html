@@ -103,7 +103,52 @@
         <!-- ==================== STEP 1: AGE & HEALTH COVER (NOT PREFILLED) ==================== -->
         <div id="wizardStep1" class="fade-enter space-y-6">
           <div>
-            <span class="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Step 1 of 5</span>
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Step 1 of 5</span>
+              <!-- Obscure QA Trigger (top-right dot of Step 1) -->
+              <button type="button" id="qaPersonaTriggerBtn" onclick="toggleQaPersonaPanel()" aria-label="Test Personas"
+                class="text-xs text-slate-800 hover:text-slate-600 px-1.5 py-0.5 rounded transition select-none">·</button>
+            </div>
+            <!-- Hidden 6-Persona Autofill Drawer (for self-testing all 6 verdict scenarios) -->
+            <div id="qaPersonaPanel" class="hidden mt-2 mb-3 p-3.5 rounded-xl bg-slate-950 border border-slate-700 space-y-2.5">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-300">QA Persona Autofill (All 5 Steps)</span>
+                <button type="button" onclick="toggleQaPersonaPanel()" class="text-[11px] text-slate-400 hover:text-white">✕</button>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                <button type="button" onclick="applyQaPersona('retired_strong')"
+                  class="text-left px-2.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-emerald-500/30 text-[11px] text-emerald-300 font-semibold transition">
+                  1. Strong — Retired, well-funded
+                </button>
+                <button type="button" onclick="applyQaPersona('working_retire_now')"
+                  class="text-left px-2.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-emerald-500/30 text-[11px] text-emerald-300 font-semibold transition">
+                  2. Financial Freedom — Retire today
+                </button>
+                <button type="button" onclick="applyQaPersona('working_retire_early')"
+                  class="text-left px-2.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-emerald-500/30 text-[11px] text-emerald-300 font-semibold transition">
+                  3. Ahead of Plan — Retire early
+                </button>
+                <button type="button" onclick="applyQaPersona('working_on_track')"
+                  class="text-left px-2.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-indigo-500/40 text-[11px] text-teal-300 font-semibold transition">
+                  4. On Track — Planned retirement
+                </button>
+                <button type="button" onclick="applyQaPersona('working_shortfall')"
+                  class="text-left px-2.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-amber-500/30 text-[11px] text-amber-300 font-semibold transition">
+                  5. Needs Attention — Working shortfall
+                </button>
+                <button type="button" onclick="applyQaPersona('retired_shortfall')"
+                  class="text-left px-2.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-rose-500/30 text-[11px] text-rose-300 font-semibold transition">
+                  6. Action Required — Retired shortfall
+                </button>
+              </div>
+              <div id="qaPersonaStatusRow" class="hidden flex items-center justify-between gap-2 pt-1 border-t border-slate-800">
+                <span id="qaPersonaStatus" class="text-[11px] text-slate-300"></span>
+                <button type="button" onclick="triggerSimulationRun()"
+                  class="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-[11px] font-bold text-white shrink-0">
+                  Run Simulation →
+                </button>
+              </div>
+            </div>
             <h2 class="text-xl font-bold text-white mt-1">About You & Health Insurance</h2>
             <p class="text-xs text-slate-400 mt-1">Enter your current age and select whether you have medical insurance coverage.</p>
           </div>
@@ -165,7 +210,7 @@
             <div>
               <span class="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Step 2 of 5 (Optional)</span>
               <h2 class="text-xl font-bold text-white mt-1">Your Current Savings & Assets</h2>
-              <p class="text-xs text-slate-400 mt-1">Use the 0–₹5 Cr sliders or type any larger amount in the box (in Lakhs). Leave blank for ₹0.</p>
+              <p class="text-xs text-slate-400 mt-1">Use the sliders or type any larger value directly in the box (in Lakhs). Leave blank for ₹0.</p>
             </div>
             <!-- Read-Only Calculated Summary Banner (Distinct from Input Boxes) -->
             <div class="total-wealth-banner">
@@ -177,7 +222,7 @@
             </div>
           </div>
 
-          <!-- 4 Asset Class Value Inputs (in Lakhs, Slider Scale 0 to 500 Lakhs = 0 to 5 Cr, Type Larger in Box) -->
+          <!-- 4 Asset Class Value Inputs (in Lakhs; Sliders: 0-2 Cr for Eq/FI/RE, 0-20 L for Cash; Type larger in box) -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <!-- 1. Equity Value -->
             <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-2.5">
@@ -191,7 +236,7 @@
                 </span>
               </div>
               <div class="flex items-center gap-3">
-                <input id="equityLakhsSlider" type="range" min="0" max="500" step="1" value="0" class="w-full"
+                <input id="equityLakhsSlider" type="range" min="0" max="200" step="1" value="0" class="w-full"
                   oninput="updateAssetValue('equity', this.value)" />
                 <div class="flex items-center bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 shrink-0">
                   <input id="equityLakhsInput" type="number" min="0" max="50000" step="1" value="" placeholder="0"
@@ -202,8 +247,8 @@
               </div>
               <div class="flex justify-between text-[10px] text-slate-500">
                 <span>₹0</span>
-                <span>Slider: 0–₹5 Cr (Type for more)</span>
-                <span>₹5 Cr</span>
+                <span>Slider: 0–₹2 Cr (Type for more)</span>
+                <span>₹2 Cr</span>
               </div>
             </div>
 
@@ -219,7 +264,7 @@
                 </span>
               </div>
               <div class="flex items-center gap-3">
-                <input id="fiLakhsSlider" type="range" min="0" max="500" step="1" value="0" class="w-full slider-emerald"
+                <input id="fiLakhsSlider" type="range" min="0" max="200" step="1" value="0" class="w-full slider-emerald"
                   oninput="updateAssetValue('fixed_income', this.value)" />
                 <div class="flex items-center bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 shrink-0">
                   <input id="fiLakhsInput" type="number" min="0" max="50000" step="1" value="" placeholder="0"
@@ -230,8 +275,8 @@
               </div>
               <div class="flex justify-between text-[10px] text-slate-500">
                 <span>₹0</span>
-                <span>Slider: 0–₹5 Cr (Type for more)</span>
-                <span>₹5 Cr</span>
+                <span>Slider: 0–₹2 Cr (Type for more)</span>
+                <span>₹2 Cr</span>
               </div>
             </div>
 
@@ -247,7 +292,7 @@
                 </span>
               </div>
               <div class="flex items-center gap-3">
-                <input id="reLakhsSlider" type="range" min="0" max="500" step="1" value="0" class="w-full slider-amber"
+                <input id="reLakhsSlider" type="range" min="0" max="200" step="1" value="0" class="w-full slider-amber"
                   oninput="updateAssetValue('real_estate', this.value)" />
                 <div class="flex items-center bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 shrink-0">
                   <input id="reLakhsInput" type="number" min="0" max="50000" step="1" value="" placeholder="0"
@@ -258,8 +303,8 @@
               </div>
               <div class="flex justify-between text-[10px] text-slate-500">
                 <span>₹0</span>
-                <span>Slider: 0–₹5 Cr (Type for more)</span>
-                <span>₹5 Cr</span>
+                <span>Slider: 0–₹2 Cr (Type for more)</span>
+                <span>₹2 Cr</span>
               </div>
             </div>
 
@@ -275,7 +320,7 @@
                 </span>
               </div>
               <div class="flex items-center gap-3">
-                <input id="cashLakhsSlider" type="range" min="0" max="500" step="1" value="0" class="w-full"
+                <input id="cashLakhsSlider" type="range" min="0" max="20" step="1" value="0" class="w-full"
                   oninput="updateAssetValue('cash', this.value)" />
                 <div class="flex items-center bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 shrink-0">
                   <input id="cashLakhsInput" type="number" min="0" max="50000" step="1" value="" placeholder="0"
@@ -286,8 +331,8 @@
               </div>
               <div class="flex justify-between text-[10px] text-slate-500">
                 <span>₹0</span>
-                <span>Slider: 0–₹5 Cr (Type for more)</span>
-                <span>₹5 Cr</span>
+                <span>Slider: 0–₹20 L (Type for more)</span>
+                <span>₹20 L</span>
               </div>
             </div>
           </div>
@@ -376,7 +421,7 @@
               </div>
               <div>
                 <label for="jobGrowthInput" class="block text-xs text-slate-300 mb-1">Expected Annual Increment (% or Range)</label>
-                <input id="jobGrowthInput" type="text" value="" placeholder="e.g. 7 or 5-7%"
+                <input id="jobGrowthInput" type="text" value="5" placeholder="e.g. 5 or 5-7%"
                   oninput="updateIncomeSettings()"
                   class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-indigo-500" />
               </div>
@@ -490,72 +535,53 @@
             <p class="text-xs text-slate-400 mt-1">Enter your household expenses and any planned future expenses below.</p>
           </div>
 
-          <!-- Regular Living Expenses Box (Mandatory *, No "Required" Text Inside Textbox, No Local Variance Input) -->
-          <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <!-- Regular Living Expenses Box (Mandatory *, Clean Direct Input Box Like Income — No Slider) -->
+          <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="flex items-center gap-2">
-                <span class="text-xs font-bold text-white">Household Living Expense <span class="text-rose-400 font-bold" title="Required">*</span></span>
-                <div class="inline-flex rounded-xl bg-slate-900 p-1 border border-slate-800">
-                  <button type="button" id="btnFreqMonthly" onclick="switchExpenseFreq('monthly')"
-                    class="px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white transition">
-                    Monthly
-                  </button>
-                  <button type="button" id="btnFreqAnnual" onclick="switchExpenseFreq('annual')"
-                    class="px-3 py-1 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition">
-                    Annual
-                  </button>
-                </div>
+              <label for="expenseInput" class="text-sm font-bold text-white">
+                🏠 Household Living Expense (₹) <span class="text-rose-400 font-bold" title="Required">*</span>
+              </label>
+              <div class="inline-flex rounded-xl bg-slate-900 p-1 border border-slate-800">
+                <button type="button" id="btnFreqMonthly" onclick="switchExpenseFreq('monthly')"
+                  class="px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white transition">
+                  Monthly
+                </button>
+                <button type="button" id="btnFreqAnnual" onclick="switchExpenseFreq('annual')"
+                  class="px-3 py-1 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition">
+                  Annual
+                </button>
               </div>
-              <span id="expenseSummaryBadge" class="text-sm font-extrabold text-amber-300">
-                ₹0/mo (₹0/yr)
-              </span>
             </div>
 
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              <input id="expenseSlider" type="range" min="15000" max="500000" step="5000" value="15000"
-                class="w-full sm:flex-1 slider-amber" oninput="updateExpense(this.value)" />
-              <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 shrink-0">
-                <span class="text-xs text-slate-400 mr-1.5">₹</span>
-                <input id="expenseInput" type="number" min="0" max="50000000" step="5000" value="" placeholder="e.g. 100000"
-                  oninput="updateExpense(this.value)"
-                  class="w-full sm:w-32 bg-transparent text-right text-sm font-bold text-white focus:outline-none" />
-              </div>
+            <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+              <input id="expenseInput" type="number" min="0" max="50000000" step="5000" value="" placeholder="e.g. 100000"
+                oninput="updateExpense(this.value)"
+                class="w-full sm:flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-base font-bold text-white focus:outline-none focus:border-indigo-500" />
+              <span id="expenseSummaryBadge" class="text-xs font-extrabold px-3 py-2 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 shrink-0 text-center">
+                ₹0/mo (₹0/yr)
+              </span>
             </div>
             <p id="expenseValidationError" class="hidden text-xs font-bold text-rose-400">
               ⚠️ Please enter your living expenses before running the simulation.
             </p>
           </div>
 
-          <!-- Future Goals & Expenses Builder (All Quick Labels Compatible with Both One-Off & Recurring) -->
+          <!-- Future Goals & Expenses Builder (1. Select Category -> 2. One-Off or Recurring -> 3. Editable Start/End Age) -->
           <div class="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-5 space-y-4">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <span class="text-xs font-bold text-slate-200 block">
-                  🎯 Future Goals & Planned Expenses (Optional • Today's ₹ Value)
-                </span>
-                <p class="text-[11px] text-slate-400">
-                  Select any category below, choose One-Off or Recurring, and click "+ Add Goal".
-                </p>
-              </div>
-
-              <!-- Mode Switcher: One-Off vs Recurring -->
-              <div class="inline-flex rounded-xl bg-slate-900 p-1 border border-slate-800">
-                <button type="button" id="btnGoalModeOneOff" onclick="setGoalFormMode(false)"
-                  class="px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white transition">
-                  One-Off Goal
-                </button>
-                <button type="button" id="btnGoalModeRecurring" onclick="setGoalFormMode(true)"
-                  class="px-3 py-1 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition">
-                  Recurring Goal
-                </button>
-              </div>
+            <div>
+              <span class="text-xs font-bold text-slate-200 block">
+                🎯 Future Goals & Planned Expenses (Optional • Today's ₹ Value)
+              </span>
+              <p class="text-[11px] text-slate-400">
+                1) Select a category, 2) choose One-Off or Recurring, 3) edit amount & ages, and click "+ Add Goal".
+              </p>
             </div>
 
-            <!-- Selectable Quick Label Chips (All Compatible with Both One-Off and Recurring) -->
+            <!-- Step 1: Selectable Quick Label Chips (No Default Pre-Selected; All Compatible with Both One-Off & Recurring) -->
             <div class="flex flex-wrap items-center gap-1.5">
-              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">Select Category:</span>
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">1. Category:</span>
               <button type="button" id="goalChip_Education" onclick="selectGoalQuickLabel('Education')"
-                class="goal-chip goal-chip-active">
+                class="goal-chip">
                 🎓 Education
               </button>
               <button type="button" id="goalChip_Marriage" onclick="selectGoalQuickLabel('Marriage')"
@@ -576,43 +602,58 @@
               </button>
             </div>
 
-            <!-- Goal Input Form (Defaults: Start Age = Current Age, End Age = End of Plan, Every N Yrs = 3; Variance is Global) -->
+            <!-- Step 2: Mode Switcher (One-Off vs Recurring) -->
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">2. Frequency:</span>
+              <div class="inline-flex rounded-xl bg-slate-900 p-1 border border-slate-800">
+                <button type="button" id="btnGoalModeOneOff" onclick="setGoalFormMode(false)"
+                  class="px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white transition">
+                  One-Off Goal
+                </button>
+                <button type="button" id="btnGoalModeRecurring" onclick="setGoalFormMode(true)"
+                  class="px-3 py-1 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition">
+                  Recurring Goal
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 3: Goal Input Form (No Default Label; Start Age & End Age Fully Editable; Preserves Values on Switch) -->
             <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-3.5 space-y-3">
               <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
                 <div class="sm:col-span-3">
-                  <label class="block text-[10px] text-slate-400 mb-1">Selected Goal Label</label>
-                  <input id="newKnownTag" type="text" value="Education" placeholder="e.g. Education / Vacation" oninput="updateGoalRepeatPreview()"
-                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500" />
+                  <label class="block text-[10px] text-slate-400 mb-1">Goal Label</label>
+                  <input id="newKnownTag" type="text" value="" placeholder="Select category or type" oninput="updateGoalRepeatPreview()"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500" />
                 </div>
                 <div class="sm:col-span-2">
                   <label class="block text-[10px] text-slate-400 mb-1">Today's Value (Lakhs)</label>
-                  <input id="newKnownLakhs" type="number" min="0.25" max="10000" step="0.5" value="" placeholder="e.g. 15" oninput="updateGoalRepeatPreview()"
-                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-indigo-500" />
+                  <input id="newKnownLakhs" type="number" inputmode="decimal" min="0.25" max="10000" step="0.5" value="" placeholder="e.g. 15" oninput="updateGoalRepeatPreview()"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs font-bold text-white focus:outline-none focus:border-indigo-500" />
                 </div>
 
-                <!-- One-Off Only Field (Start / Target Age, defaults to Current Age) -->
+                <!-- One-Off Only Field (Start Age — Fully Editable) -->
                 <div id="oneOffYearBox" class="sm:col-span-5">
                   <label class="block text-[10px] text-slate-400 mb-1">Start Age (When It Occurs)</label>
-                  <input id="newKnownYears" type="number" min="18" max="105" value="" placeholder="Current Age" oninput="updateGoalRepeatPreview()"
-                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-indigo-500" />
+                  <input id="newKnownYears" type="number" inputmode="numeric" min="18" max="105" value="" placeholder="Current Age" oninput="updateGoalRepeatPreview()"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs font-bold text-white focus:outline-none focus:border-indigo-500" />
                 </div>
 
-                <!-- Recurring Only Fields (Start Age = Current Age, End Age = End of Plan, Every N Yrs = 3) -->
+                <!-- Recurring Only Fields (Start Age, End Age, Every N Yrs — All Fully Editable) -->
                 <div id="recurringFieldsBox" class="hidden sm:col-span-5 grid grid-cols-3 gap-2">
                   <div>
                     <label class="block text-[10px] text-slate-400 mb-1">Start Age</label>
-                    <input id="newKnownStartYear" type="number" min="18" max="105" value="" placeholder="Cur Age" oninput="updateGoalRepeatPreview()"
-                      class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs font-bold text-white" />
+                    <input id="newKnownStartYear" type="number" inputmode="numeric" min="18" max="105" value="" placeholder="Cur Age" oninput="updateGoalRepeatPreview()"
+                      class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs font-bold text-white" />
                   </div>
                   <div>
                     <label class="block text-[10px] text-slate-400 mb-1">End Age</label>
-                    <input id="newKnownEndYear" type="number" min="18" max="110" value="90" placeholder="90" oninput="updateGoalRepeatPreview()"
-                      class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs font-bold text-white" />
+                    <input id="newKnownEndYear" type="number" inputmode="numeric" min="18" max="110" value="90" placeholder="90" oninput="updateGoalRepeatPreview()"
+                      class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs font-bold text-white" />
                   </div>
                   <div>
                     <label class="block text-[10px] text-slate-400 mb-1">Every N Yrs</label>
-                    <input id="newKnownEveryNYears" type="number" min="1" max="30" value="3" placeholder="3" oninput="updateGoalRepeatPreview()"
-                      class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs font-bold text-white" />
+                    <input id="newKnownEveryNYears" type="number" inputmode="numeric" min="1" max="30" value="3" placeholder="3" oninput="updateGoalRepeatPreview()"
+                      class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-xs font-bold text-white" />
                   </div>
                 </div>
 
@@ -624,9 +665,12 @@
                 </div>
               </div>
 
-              <!-- Live Intuitive Repeat Counter & Schedule Preview -->
-              <div id="goalRepeatPreview" class="text-[11px] font-semibold text-indigo-300 bg-slate-950/90 border border-slate-800 rounded-lg px-3 py-1.5">
-                Select a quick label or enter goal details above to see the repeat count and schedule.
+              <p id="goalDuplicateWarning" class="hidden text-xs font-bold text-amber-300 bg-amber-500/15 border border-amber-500/40 rounded-lg px-3 py-1.5">
+                ⚠️ This planned expense is already in your list. Change the label or start age if you want to add another.
+              </p>
+
+              <!-- Live Schedule Preview (Hidden by Default Until User Enters a Goal & Amount) -->
+              <div id="goalRepeatPreview" class="hidden text-[11px] font-semibold text-indigo-300 bg-slate-950/90 border border-slate-800 rounded-lg px-3 py-1.5">
               </div>
             </div>
 
@@ -658,10 +702,18 @@
             <div id="advancedDrawer" class="hidden px-5 pb-5 pt-3 border-t border-slate-800/80 space-y-5">
               <!-- Row 1: Uniform Tax Drag, Global Variance (with ? Tooltip), Rebalancing, Rent Step-Up, Lifestyle Creep & Target Age -->
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <!-- Uniform Tax Drag (Default 10%) -->
+                <!-- Uniform Tax Drag (Default 10%, with ? Tooltip) -->
                 <div>
                   <div class="flex justify-between text-xs mb-1">
-                    <label class="text-slate-300">Uniform Tax Drag (%)</label>
+                    <label class="text-slate-300 flex items-center">
+                      <span>Uniform Tax Drag (%)</span>
+                      <span class="help-tooltip-wrap" tabindex="0">
+                        <span class="help-tooltip-icon" aria-label="What Tax Drag means">?</span>
+                        <span class="help-tooltip-box">
+                          Estimated average tax (capital gains / interest tax) deducted whenever you withdraw from investments or rebalance your portfolio.
+                        </span>
+                      </span>
+                    </label>
                     <span class="font-bold text-amber-300"><span id="taxDragValText">10.0</span>%</span>
                   </div>
                   <input id="taxDragSlider" type="range" min="0.0" max="35.0" step="0.5" value="10.0"
@@ -700,13 +752,13 @@
                     class="w-full" oninput="updateAdvSettings()" />
                 </div>
 
-                <!-- Rental & Passive Income Inflation Step-Up Every N Years -->
+                <!-- Rental & Passive Income Inflation Step-Up Every N Years (Default 3 Years) -->
                 <div>
                   <div class="flex justify-between text-xs mb-1">
                     <label class="text-slate-300">Rent/Passive Step-Up</label>
-                    <span class="font-bold text-emerald-300">Every <span id="passiveInfFreqText">1</span> yr(s)</span>
+                    <span class="font-bold text-emerald-300">Every <span id="passiveInfFreqText">3</span> yr(s)</span>
                   </div>
-                  <input id="passiveInfFreqSlider" type="range" min="1" max="10" step="1" value="1"
+                  <input id="passiveInfFreqSlider" type="range" min="1" max="10" step="1" value="3"
                     class="w-full slider-emerald" oninput="updateAdvSettings()" />
                 </div>
 
@@ -779,6 +831,14 @@
                   </select>
                 </div>
               </div>
+
+              <!-- Reset Plan Configuration to Original Defaults -->
+              <div class="flex justify-end pt-2 border-t border-slate-800/70">
+                <button type="button" id="btnResetAdvConfig" onclick="resetAdvSettings()"
+                  class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition">
+                  ↺ Reset Configuration to Defaults
+                </button>
+              </div>
             </div>
           </div>
 
@@ -823,97 +883,107 @@
     <!-- ==================== PART 2: VISUAL SIMULATION RESULTS ==================== -->
     <section id="resultsContainer" class="hidden fade-enter space-y-6">
 
-      <!-- Top Control Bar: Spacious Mobile-Friendly Plan Snapshot + Actions -->
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
-        <div class="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 text-xs">
-          <span class="px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-200 font-semibold text-center sm:text-left" id="summaryPillAge">Age --</span>
-          <span class="px-2.5 py-1.5 rounded-lg bg-slate-800 text-emerald-300 font-semibold text-center sm:text-left" id="summaryPillCorpus">₹--</span>
-          <span class="px-2.5 py-1.5 rounded-lg bg-slate-800 text-indigo-300 font-semibold text-center sm:text-left" id="summaryPillSplit">--% Liquid</span>
-          <span class="px-2.5 py-1.5 rounded-lg bg-slate-800 text-amber-300 font-semibold text-center sm:text-left" id="summaryPillExpense">₹--/mo</span>
-          <span class="px-2.5 py-1.5 rounded-lg bg-slate-800 text-teal-300 font-semibold text-center sm:text-left" id="summaryPillMedIns">🏥 Health Cover: --</span>
-          <span class="px-2.5 py-1.5 rounded-lg bg-indigo-950 text-indigo-300 border border-indigo-500/30 font-mono text-[11px] text-center sm:text-left" id="summaryPillSeed">
-            Sample #--
-          </span>
-        </div>
-
-        <div class="grid grid-cols-2 sm:flex items-center justify-end gap-2 pt-1">
-          <button type="button" onclick="returnToWizard(1)"
-            class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition text-center">
-            ✏️ Edit Plan
-          </button>
-          <button type="button" onclick="triggerSimulationRun()"
-            class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white shadow-lg shadow-indigo-600/25 transition flex items-center justify-center gap-1.5">
-            <span>🎲 New Market Sample</span>
-          </button>
+      <!-- Crisp, Mobile-First Top Bar: Compact Snapshot + Edit / Re-Run Actions -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 sm:p-4 space-y-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex flex-wrap items-center gap-1.5 text-[11px] sm:text-xs">
+            <span class="px-2 py-1 rounded-lg bg-slate-800 text-slate-200 font-semibold" id="summaryPillAge">Age --</span>
+            <span class="px-2 py-1 rounded-lg bg-slate-800 text-emerald-300 font-semibold" id="summaryPillCorpus">₹--</span>
+            <span class="px-2 py-1 rounded-lg bg-slate-800 text-amber-300 font-semibold" id="summaryPillExpense">₹--/mo</span>
+            <span class="hidden sm:inline-block px-2 py-1 rounded-lg bg-slate-800 text-indigo-300 font-semibold" id="summaryPillSplit">--% Liquid</span>
+            <span class="hidden sm:inline-block px-2 py-1 rounded-lg bg-slate-800 text-teal-300 font-semibold" id="summaryPillMedIns">🏥 Health Cover: --</span>
+            <span class="hidden" id="summaryPillSeed">Sample #--</span>
+          </div>
+          <div class="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
+            <button type="button" onclick="returnToWizard(1)"
+              class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition text-center">
+              ✏️ Edit
+            </button>
+            <button type="button" onclick="triggerSimulationRun()"
+              class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white shadow-lg shadow-indigo-600/25 transition text-center">
+              🎲 Re-Run
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Hero Outcome Banner: DECODE MY FINANCIAL OUTLOOK + MEDIAN CASE PRIORITIZED FIRST, THEN WORST CASE -->
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
-        <div>
-          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+      <!-- Crisp Hero Outcome Card: Verdict + 2-Column Median & Worst Case Tiles -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl space-y-4">
+        <div class="space-y-1.5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
             <span id="resVerdictBadge"
-              class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+              class="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
               Decode My Financial Outlook
             </span>
-            <span id="resSimCountLabel" class="text-xs font-bold text-emerald-300">
-              Success Rate: --% (Target: 85%)
+            <span id="resSimCountLabel" class="text-xs font-extrabold text-emerald-300">
+              Success Rate: --%
             </span>
           </div>
 
-          <h2 id="resHeadline" class="text-xl sm:text-2xl font-extrabold text-white mt-1">
+          <h2 id="resHeadline" class="text-lg sm:text-2xl font-extrabold text-white leading-snug">
             --
           </h2>
-          <p id="resRecommendation" class="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed">
+          <p id="resRecommendation" class="text-xs text-slate-400 leading-relaxed">
             --
           </p>
         </div>
 
-        <!-- Year-by-Year Retirement Age Finder Bar Chart -->
-        <div id="retirementAgeProgressionBox" class="hidden bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
-          <div class="flex flex-wrap items-center justify-between gap-2">
+        <!-- Crisp 2-Column Outcome Tiles (Side-by-Side Even on Mobile) -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-indigo-950/50 border-2 border-indigo-500 rounded-xl p-3.5 sm:p-4 text-center sm:text-left sm:flex items-center justify-between">
             <div>
-              <span class="text-xs sm:text-sm font-bold text-white block">📅 Retirement Age Finder (Year-by-Year Success Rate Progression)</span>
-              <span class="text-[11px] text-slate-400">Apples-to-apples comparison across the exact same market returns & random shocks. Click any bar to inspect that retirement age below.</span>
+              <span class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-indigo-300 block">Median Case</span>
+              <span id="cardP50Yrs" class="text-[11px] text-slate-400 hidden sm:block mt-0.5">Typical market</span>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <span id="recommendedRetireAgeBadge"
-                class="px-3 py-1 rounded-xl text-xs font-extrabold bg-emerald-500/20 border border-emerald-500/50 text-emerald-300">
-                ★ Recommended: Age --
-              </span>
-              <span id="selectedRetirementAgeLabel"
-                class="px-2.5 py-1 rounded-xl text-[11px] font-bold bg-indigo-500/15 border border-indigo-500/30 text-indigo-300">
-                Viewing: Age --
-              </span>
-            </div>
+            <span id="cardP50Age" class="text-lg sm:text-2xl font-extrabold text-white block mt-1 sm:mt-0">Past --+</span>
           </div>
 
-          <div class="chart-box-sm">
-            <canvas id="retirementAgeChart"></canvas>
+          <div class="bg-rose-950/30 border border-rose-500/40 rounded-xl p-3.5 sm:p-4 text-center sm:text-left sm:flex items-center justify-between">
+            <div>
+              <span class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-rose-300 block">Worst Case</span>
+              <span id="cardP10Yrs" class="text-[11px] text-slate-400 hidden sm:block mt-0.5">Severe crash</span>
+            </div>
+            <span id="cardP10Age" class="text-lg sm:text-2xl font-extrabold text-white block mt-1 sm:mt-0">Until --</span>
           </div>
         </div>
 
-        <!-- Outcome Cards: MEDIAN CASE FIRST (Primary), WORST CASE SECOND (Focused on Future Age) -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div class="bg-indigo-950/50 border-2 border-indigo-500 rounded-xl p-4 shadow-lg shadow-indigo-500/10 flex items-center justify-between">
+        <!-- Interactive Retirement Age Explorer (Replaces Bar Chart: Edit Earlier or Later Age + Reset to Recommended) -->
+        <div id="retirementAgeProgressionBox" class="hidden bg-slate-950/70 border border-slate-800 rounded-xl p-3.5 sm:p-4 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <span class="text-xs font-bold uppercase tracking-wider text-indigo-300 block">Median Case (Typical Market)</span>
-              <span class="text-xs text-slate-400 block mt-0.5">Until what age your wealth lasts in a normal market cycle</span>
+              <span class="text-xs font-bold text-white block">🎯 Explore Different Retirement Ages</span>
+              <span class="text-[11px] text-slate-400">Pick an earlier or later age to see what happens to your wealth.</span>
             </div>
-            <div class="text-right">
-              <span id="cardP50Age" class="text-xl sm:text-2xl font-extrabold text-white block">Lasts past --+</span>
-              <span id="cardP50Yrs" class="text-xs text-indigo-300 font-semibold">Sustains past Age --</span>
-            </div>
+            <span id="recommendedRetireAgeBadge"
+              class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-emerald-500/20 border border-emerald-500/50 text-emerald-300">
+              ★ Recommended: Age --
+            </span>
           </div>
 
-          <div class="bg-rose-950/30 border border-rose-500/40 rounded-xl p-4 flex items-center justify-between">
-            <div>
-              <span class="text-xs font-bold uppercase tracking-wider text-rose-300 block">Worst Case</span>
-              <span class="text-xs text-slate-400 block mt-0.5">Until what age your wealth lasts in severe market crashes</span>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="inline-flex items-center gap-1.5">
+              <button type="button" id="btnRetireAgeMinus" onclick="stepCandidateRetirementAge(-1)"
+                class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-extrabold text-white transition">
+                −1 yr
+              </button>
+              <select id="retireAgePicker" onchange="selectCandidateRetirementAge(this.value)"
+                class="bg-slate-900 border border-indigo-500/60 rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none">
+              </select>
+              <button type="button" id="btnRetireAgePlus" onclick="stepCandidateRetirementAge(1)"
+                class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-extrabold text-white transition">
+                +1 yr
+              </button>
             </div>
-            <div class="text-right">
-              <span id="cardP10Age" class="text-xl sm:text-2xl font-extrabold text-white block">Lasts until --</span>
-              <span id="cardP10Yrs" class="text-xs text-rose-300 font-semibold">Funds run out at Age --</span>
+
+            <div class="flex items-center gap-2">
+              <span id="selectedRetirementAgeLabel"
+                class="text-[11px] font-semibold text-indigo-300">
+                Viewing: Age --
+              </span>
+              <button type="button" id="btnResetToRecommendedAge" onclick="resetToRecommendedRetirementAge()"
+                class="hidden px-2.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-[11px] font-bold text-emerald-300 transition">
+                ↺ Back to Recommended
+              </button>
             </div>
           </div>
         </div>
@@ -925,7 +995,7 @@
           <div>
             <h3 class="text-base font-bold text-white">Your Wealth Over Time: Median Case vs. Worst Case</h3>
             <p class="text-xs text-slate-400">
-              Hover over any marker on either curve to inspect that specific case's wealth and events separately.
+              Hover or tap anywhere on either curve to inspect that age's wealth and events.
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
@@ -958,30 +1028,18 @@
           </div>
         </div>
 
-        <!-- Event & Rebalance Legend Strip on Chart -->
-        <div id="chartEventsStrip" class="flex flex-wrap items-center gap-2 text-[11px]"></div>
-
         <div class="chart-box">
           <canvas id="spaghettiChart"></canvas>
         </div>
       </div>
 
-      <!-- CHART 2: SUCCESS RATE BY AGE (FULL WIDTH) -->
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
-        <h3 class="text-sm font-bold text-white">Success Rate by Age</h3>
-        <p class="text-xs text-slate-400 mb-3">Your success rate of still having wealth remaining at each age</p>
-        <div class="chart-box-sm">
-          <canvas id="survivalChart"></canvas>
-        </div>
-      </div>
-
-      <!-- YEAR-BY-YEAR BREAKDOWN TABLE (NO SCROLL BARS, EXACT 8 REQUESTED COLUMNS) -->
+      <!-- YEAR-BY-YEAR BREAKDOWN TABLE (WITH EVENTS COLUMN & ON-DEMAND FULL MATH AUDIT) -->
       <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 class="text-sm font-bold text-white">🔍 Year-by-Year Cashflow & Wealth Breakdown</h3>
+            <h3 class="text-sm font-bold text-white">🔍 Year-by-Year Liquid Corpus Breakdown</h3>
             <p class="text-xs text-slate-400">
-              Inspect every age's market year, returns & inflation, income, SIPs, expenses, events, and ending wealth
+              Review inflows, outflows, capital gains, and events each year. Click <b>Math</b> on any row to audit the complete calculation.
             </p>
           </div>
           <select id="notableRunSelect" onchange="renderRunInspectorTable()"
@@ -989,18 +1047,18 @@
           </select>
         </div>
 
-        <div class="overflow-hidden border border-slate-800 rounded-xl">
+        <div class="border border-slate-800 rounded-xl">
           <table class="w-full text-left text-xs mobile-stack-table">
             <thead class="bg-slate-950 text-slate-400">
               <tr>
-                <th class="py-2.5 px-2.5">Age</th>
-                <th class="py-2.5 px-2.5">Market Year</th>
-                <th class="py-2.5 px-2.5">Returns & Inflation (Eq / FD / Inf)</th>
-                <th class="py-2.5 px-2.5">Income</th>
-                <th class="py-2.5 px-2.5">SIPs</th>
-                <th class="py-2.5 px-2.5">Expenses</th>
-                <th class="py-2.5 px-2.5">Events (Rebalancing, Planned Expenses, Random Shocks)</th>
-                <th class="py-2.5 px-2.5">Ending Wealth</th>
+                <th class="py-2.5 px-2.5">Age (Mkt Yr)</th>
+                <th class="py-2.5 px-2.5">Starting Liquid Corpus</th>
+                <th class="py-2.5 px-2.5">Inflows</th>
+                <th class="py-2.5 px-2.5">Outflows</th>
+                <th class="py-2.5 px-2.5">Capital Gains</th>
+                <th class="py-2.5 px-2.5">Ending Liquid Corpus</th>
+                <th class="py-2.5 px-2.5">Events</th>
+                <th class="py-2.5 px-2.5">Math</th>
               </tr>
             </thead>
             <tbody id="runInspectorTableBody" class="divide-y divide-slate-800/70"></tbody>

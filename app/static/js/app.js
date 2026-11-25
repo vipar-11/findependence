@@ -24,12 +24,12 @@ const state = {
   job_monthly_income: 0,
   job_income_years: 0,
   job_income_until_age: null,
-  job_income_growth_pct: 0,
-  job_income_growth_max_pct: 0,
-  job_income_growth_range: '',
+  job_income_growth_pct: 5,
+  job_income_growth_max_pct: 5,
+  job_income_growth_range: '5',
   rental_monthly_income: 0,
   other_passive_monthly_income: 0,
-  passive_income_inflation_interval_years: 1,
+  passive_income_inflation_interval_years: 3,
 
   // Step 4: Ongoing Monthly SIPs (Not prefilled; automatically continue until end of income)
   equity_sip_monthly: 0,
@@ -42,7 +42,7 @@ const state = {
   expense_frequency: 'monthly',
   expense_amount: 0,
   expense_variance_pct: 10.0,
-  selected_goal_quick_label: 'Education',
+  selected_goal_quick_label: '',
   goal_form_is_recurring: false,
   known_future_expenses: [],
 
@@ -68,9 +68,7 @@ const state = {
 
 const charts = {
   assetPie: null,
-  retirementAge: null,
   spaghetti: null,
-  survival: null,
 };
 
 // ==================== INDIAN CURRENCY HELPERS ====================
@@ -96,6 +94,16 @@ function isStep1Complete() {
   return Boolean(state.current_age && state.current_age >= 18 && state.has_medical_insurance !== null);
 }
 
+function scrollToPageTop() {
+  if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  if (typeof document !== 'undefined') {
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
+  }
+}
+
 function goToStep(stepNum) {
   if (stepNum > 1 && !isStep1Complete()) {
     const err1 = document.getElementById('step1ValidationError');
@@ -109,14 +117,14 @@ function goToStep(stepNum) {
     if (!stepEl || !indEl) return;
     if (n === stepNum) {
       stepEl.classList.remove('hidden');
-      indEl.className = 'text-left p-3 rounded-xl border transition border-indigo-500 bg-indigo-500/10';
-      indEl.querySelector('span:first-child').className = 'text-[11px] font-bold uppercase tracking-wider text-indigo-400 block';
-      indEl.querySelector('span:last-child').className = 'text-xs font-semibold text-white';
+      indEl.className = 'text-left p-2 sm:p-3 rounded-xl border transition border-indigo-500 bg-indigo-500/10';
+      indEl.querySelector('span:first-child').className = 'text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-indigo-400 block';
+      indEl.querySelector('span:last-child').className = 'text-[11px] sm:text-xs font-semibold text-white';
     } else {
       stepEl.classList.add('hidden');
-      indEl.className = 'text-left p-3 rounded-xl border transition border-slate-800 bg-slate-900/60 hover:border-slate-700';
-      indEl.querySelector('span:first-child').className = 'text-[11px] font-bold uppercase tracking-wider text-slate-400 block';
-      indEl.querySelector('span:last-child').className = 'text-xs font-semibold text-slate-300';
+      indEl.className = 'text-left p-2 sm:p-3 rounded-xl border transition border-slate-800 bg-slate-900/60 hover:border-slate-700';
+      indEl.querySelector('span:first-child').className = 'text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400 block';
+      indEl.querySelector('span:last-child').className = 'text-[11px] sm:text-xs font-semibold text-slate-300';
     }
   });
   if (stepNum === 2) {
@@ -125,6 +133,7 @@ function goToStep(stepNum) {
     syncGoalFormDefaults();
     updateGoalRepeatPreview();
   }
+  scrollToPageTop();
 }
 
 function returnToWizard(stepNum = 1) {
@@ -133,6 +142,229 @@ function returnToWizard(stepNum = 1) {
   document.getElementById('headerRestartBtn').classList.add('hidden');
   document.getElementById('wizardContainer').classList.remove('hidden');
   goToStep(stepNum);
+}
+
+// ==================== HIDDEN QA PERSONA AUTOFILL (6 VERDICT SCENARIOS) ====================
+const QA_PERSONAS = {
+  retired_strong: {
+    label: '1. Strong (Retired, Well-Funded)',
+    age: 60,
+    medIns: true,
+    equity: 250,
+    fi: 250,
+    re: 100,
+    cash: 20,
+    jobMo: 0,
+    jobUntilAge: '',
+    jobGrowth: '5',
+    rentMo: 25000,
+    passiveMo: 15000,
+    eqSip: 0,
+    eqSipStep: 0,
+    fiSip: 0,
+    fiSipStep: 0,
+    expenseMo: 100000,
+    goals: [
+      {
+        event_tag: 'Vacation',
+        amount_today_inr: 300000,
+        is_recurring: true,
+        years_from_now: 1,
+        start_year: 1,
+        end_year: 15,
+        start_age: 61,
+        end_age: 75,
+        every_n_years: 3,
+        variance_pct: 10,
+      },
+    ],
+  },
+  working_retire_now: {
+    label: '2. Financial Freedom (Working, Retire Today)',
+    age: 45,
+    medIns: true,
+    equity: 350,
+    fi: 200,
+    re: 100,
+    cash: 20,
+    jobMo: 350000,
+    jobUntilAge: '55',
+    jobGrowth: '5',
+    rentMo: 20000,
+    passiveMo: 0,
+    eqSip: 80000,
+    eqSipStep: 10,
+    fiSip: 40000,
+    fiSipStep: 5,
+    expenseMo: 110000,
+    goals: [
+      {
+        event_tag: 'Education',
+        amount_today_inr: 2500000,
+        is_recurring: false,
+        years_from_now: 5,
+        start_year: 5,
+        end_year: 5,
+        start_age: 50,
+        end_age: 50,
+        every_n_years: 1,
+        variance_pct: 0,
+      },
+    ],
+  },
+  working_retire_early: {
+    label: '3. Ahead of Plan (Working, Retire Early)',
+    age: 40,
+    medIns: true,
+    equity: 140,
+    fi: 80,
+    re: 50,
+    cash: 15,
+    jobMo: 350000,
+    jobUntilAge: '52',
+    jobGrowth: '6',
+    rentMo: 0,
+    passiveMo: 0,
+    eqSip: 100000,
+    eqSipStep: 10,
+    fiSip: 50000,
+    fiSipStep: 5,
+    expenseMo: 100000,
+    goals: [
+      {
+        event_tag: 'Education',
+        amount_today_inr: 2000000,
+        is_recurring: false,
+        years_from_now: 8,
+        start_year: 8,
+        end_year: 8,
+        start_age: 48,
+        end_age: 48,
+        every_n_years: 1,
+        variance_pct: 0,
+      },
+    ],
+  },
+  working_on_track: {
+    label: '4. On Track (Working, Planned Retirement)',
+    age: 50,
+    medIns: true,
+    equity: 210,
+    fi: 110,
+    re: 0,
+    cash: 15,
+    jobMo: 450000,
+    jobUntilAge: '54',
+    jobGrowth: '5',
+    rentMo: 0,
+    passiveMo: 0,
+    eqSip: 140000,
+    eqSipStep: 10,
+    fiSip: 70000,
+    fiSipStep: 5,
+    expenseMo: 100000,
+    goals: [],
+  },
+  working_shortfall: {
+    label: '5. Needs Attention (Working Shortfall)',
+    age: 45,
+    medIns: false,
+    equity: 35,
+    fi: 25,
+    re: 0,
+    cash: 5,
+    jobMo: 150000,
+    jobUntilAge: '52',
+    jobGrowth: '5',
+    rentMo: 0,
+    passiveMo: 0,
+    eqSip: 20000,
+    eqSipStep: 5,
+    fiSip: 10000,
+    fiSipStep: 5,
+    expenseMo: 120000,
+    goals: [
+      {
+        event_tag: 'Marriage',
+        amount_today_inr: 2000000,
+        is_recurring: false,
+        years_from_now: 5,
+        start_year: 5,
+        end_year: 5,
+        start_age: 50,
+        end_age: 50,
+        every_n_years: 1,
+        variance_pct: 0,
+      },
+    ],
+  },
+  retired_shortfall: {
+    label: '6. Action Required (Retired Shortfall)',
+    age: 62,
+    medIns: false,
+    equity: 40,
+    fi: 50,
+    re: 0,
+    cash: 10,
+    jobMo: 0,
+    jobUntilAge: '',
+    jobGrowth: '5',
+    rentMo: 0,
+    passiveMo: 0,
+    eqSip: 0,
+    eqSipStep: 0,
+    fiSip: 0,
+    fiSipStep: 0,
+    expenseMo: 100000,
+    goals: [],
+  },
+};
+
+function toggleQaPersonaPanel() {
+  const panel = document.getElementById('qaPersonaPanel');
+  if (panel) panel.classList.toggle('hidden');
+}
+
+function applyQaPersona(personaKey) {
+  const p = QA_PERSONAS[personaKey];
+  if (!p) return;
+
+  // Step 1: Age & Medical Insurance
+  updateAge(p.age, true);
+  setMedicalInsurance(p.medIns);
+
+  // Step 2: Assets (in Lakhs)
+  updateAssetValue('equity', p.equity);
+  updateAssetValue('fixed_income', p.fi);
+  updateAssetValue('real_estate', p.re);
+  updateAssetValue('cash', p.cash);
+
+  // Step 3: Income
+  document.getElementById('jobIncomeInput').value = p.jobMo || '';
+  document.getElementById('jobYearsInput').value = p.jobUntilAge;
+  document.getElementById('jobGrowthInput').value = p.jobGrowth;
+  document.getElementById('rentalIncomeInput').value = p.rentMo || '';
+  document.getElementById('passiveIncomeInput').value = p.passiveMo || '';
+  updateIncomeSettings();
+
+  // Step 4: SIPs
+  document.getElementById('eqSipInput').value = p.eqSip || '';
+  document.getElementById('eqSipStepupInput').value = p.eqSipStep || '';
+  document.getElementById('fiSipInput').value = p.fiSip || '';
+  document.getElementById('fiSipStepupInput').value = p.fiSipStep || '';
+  updateSipSettings();
+
+  // Step 5: Living Expenses, Goals & Default Advanced Config
+  state.expense_frequency = 'monthly';
+  switchExpenseFreq('monthly');
+  updateExpense(p.expenseMo);
+  state.known_future_expenses = p.goals.map((g) => ({ ...g }));
+  resetAdvSettings();
+
+  const statusRow = document.getElementById('qaPersonaStatusRow');
+  const statusEl = document.getElementById('qaPersonaStatus');
+  if (statusRow) statusRow.classList.remove('hidden');
+  if (statusEl) statusEl.textContent = `Loaded: ${p.label}`;
 }
 
 // ==================== STEP 1: AGE & MEDICAL INSURANCE (MANDATORY) ====================
@@ -199,25 +431,25 @@ function setMedicalInsurance(hasIns) {
   }
 }
 
-// ==================== STEP 2: INDIVIDUAL ASSET VALUES, PIE CHART & LIQUIDITY (0-5 CR SLIDER SCALE) ====================
+// ==================== STEP 2: INDIVIDUAL ASSET VALUES, PIE CHART & LIQUIDITY (0-2 CR, CASH 0-20 L) ====================
 function updateAssetValue(assetKey, rawVal) {
   const lakhs = Math.max(0, parseFloat(rawVal) || 0);
   if (assetKey === 'equity') {
     state.equity_lakhs = lakhs;
     document.getElementById('equityLakhsInput').value = lakhs || '';
-    document.getElementById('equityLakhsSlider').value = Math.min(500, lakhs);
+    document.getElementById('equityLakhsSlider').value = Math.min(200, lakhs);
   } else if (assetKey === 'fixed_income') {
     state.fixed_income_lakhs = lakhs;
     document.getElementById('fiLakhsInput').value = lakhs || '';
-    document.getElementById('fiLakhsSlider').value = Math.min(500, lakhs);
+    document.getElementById('fiLakhsSlider').value = Math.min(200, lakhs);
   } else if (assetKey === 'real_estate') {
     state.real_estate_lakhs = lakhs;
     document.getElementById('reLakhsInput').value = lakhs || '';
-    document.getElementById('reLakhsSlider').value = Math.min(500, lakhs);
+    document.getElementById('reLakhsSlider').value = Math.min(200, lakhs);
   } else if (assetKey === 'cash') {
     state.cash_lakhs = lakhs;
     document.getElementById('cashLakhsInput').value = lakhs || '';
-    document.getElementById('cashLakhsSlider').value = Math.min(500, lakhs);
+    document.getElementById('cashLakhsSlider').value = Math.min(20, lakhs);
   }
   renderSplitUI();
 }
@@ -407,23 +639,16 @@ function switchExpenseFreq(freq) {
   state.expense_frequency = freq;
   const btnMo = document.getElementById('btnFreqMonthly');
   const btnYr = document.getElementById('btnFreqAnnual');
-  const slider = document.getElementById('expenseSlider');
 
   if (freq === 'monthly') {
     btnMo.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white transition';
     btnYr.className = 'px-3 py-1 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition';
-    slider.min = 15000;
-    slider.max = 500000;
-    slider.step = 5000;
     if (prev === 'annual' && state.expense_amount > 0) {
       state.expense_amount = Math.round(state.expense_amount / 12);
     }
   } else {
     btnYr.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white transition';
     btnMo.className = 'px-3 py-1 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition';
-    slider.min = 180000;
-    slider.max = 6000000;
-    slider.step = 50000;
     if (prev === 'monthly' && state.expense_amount > 0) {
       state.expense_amount = Math.round(state.expense_amount * 12);
     }
@@ -434,10 +659,8 @@ function switchExpenseFreq(freq) {
 function updateExpense(val) {
   const amt = Math.max(0, parseFloat(val) || 0);
   state.expense_amount = amt;
-  const slider = document.getElementById('expenseSlider');
   const errEl = document.getElementById('expenseValidationError');
   if (amt > 0) {
-    slider.value = Math.min(parseFloat(slider.max), amt);
     document.getElementById('expenseInput').value = amt;
     if (errEl) errEl.classList.add('hidden');
   } else {
@@ -446,8 +669,7 @@ function updateExpense(val) {
 
   const mo = state.expense_frequency === 'monthly' ? amt : amt / 12;
   const yr = state.expense_frequency === 'annual' ? amt : amt * 12;
-  const varNote = state.expense_variance_pct > 0 ? ` (±${state.expense_variance_pct}%)` : '';
-  document.getElementById('expenseSummaryBadge').textContent = `${formatInrCompact(mo)}/mo (${formatInrCompact(yr)}/yr)${varNote}`;
+  document.getElementById('expenseSummaryBadge').textContent = `${formatInrCompact(mo)}/mo (${formatInrCompact(yr)}/yr)`;
 }
 
 function updateExpenseVariance(val) {
@@ -512,11 +734,21 @@ function computeGoalOccurrences(item) {
 }
 
 function setGoalFormMode(isRecurring) {
+  const prevRecurring = state.goal_form_is_recurring;
   state.goal_form_is_recurring = Boolean(isRecurring);
   const btnOne = document.getElementById('btnGoalModeOneOff');
   const btnRec = document.getElementById('btnGoalModeRecurring');
   const oneBox = document.getElementById('oneOffYearBox');
   const recBox = document.getElementById('recurringFieldsBox');
+  const yEl = document.getElementById('newKnownYears');
+  const sEl = document.getElementById('newKnownStartYear');
+
+  // Carry over Start Age between One-Off and Recurring without resetting entered values
+  if (!prevRecurring && state.goal_form_is_recurring && yEl && sEl && yEl.value !== '') {
+    sEl.value = yEl.value;
+  } else if (prevRecurring && !state.goal_form_is_recurring && yEl && sEl && sEl.value !== '') {
+    yEl.value = sEl.value;
+  }
 
   if (state.goal_form_is_recurring) {
     if (btnRec) btnRec.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white transition';
@@ -541,7 +773,7 @@ function selectGoalQuickLabel(tag, isRecurring, lakhs, variancePct, startYr, end
   state.selected_goal_quick_label = tag;
   document.getElementById('newKnownTag').value = tag;
 
-  // Highlight the selected quick label chip; all quick labels work with both One-Off and Recurring
+  // Highlight the selected quick label chip; preserve any values already entered by the user
   QUICK_GOAL_LABELS.forEach((lbl) => {
     const chipEl = document.getElementById(`goalChip_${lbl}`);
     if (chipEl) {
@@ -550,16 +782,21 @@ function selectGoalQuickLabel(tag, isRecurring, lakhs, variancePct, startYr, end
   });
 
   if (lakhs !== undefined) document.getElementById('newKnownLakhs').value = lakhs;
-  const resolvedStartAge = startYr !== undefined ? _resolveInputToAge(startYr, baseAge, baseAge) : baseAge;
-  const resolvedEndAge =
-    endYr !== undefined && endYr !== '' ? _resolveInputToAge(endYr, baseAge, planEndAge) : planEndAge;
-  document.getElementById('newKnownYears').value = String(resolvedStartAge);
-  const sEl = document.getElementById('newKnownStartYear');
-  const eEl = document.getElementById('newKnownEndYear');
-  const nEl = document.getElementById('newKnownEveryNYears');
-  if (sEl) sEl.value = String(resolvedStartAge);
-  if (eEl) eEl.value = String(resolvedEndAge);
-  if (nEl) nEl.value = String(everyNYrs !== undefined ? everyNYrs : 3);
+  if (startYr !== undefined) {
+    const resolvedStartAge = _resolveInputToAge(startYr, baseAge, baseAge);
+    document.getElementById('newKnownYears').value = String(resolvedStartAge);
+    const sEl = document.getElementById('newKnownStartYear');
+    if (sEl) sEl.value = String(resolvedStartAge);
+  }
+  if (endYr !== undefined) {
+    const resolvedEndAge = endYr !== '' ? _resolveInputToAge(endYr, baseAge, planEndAge) : planEndAge;
+    const eEl = document.getElementById('newKnownEndYear');
+    if (eEl) eEl.value = String(resolvedEndAge);
+  }
+  if (everyNYrs !== undefined) {
+    const nEl = document.getElementById('newKnownEveryNYears');
+    if (nEl) nEl.value = String(everyNYrs);
+  }
   if (variancePct !== undefined && variancePct > 0) {
     state.global_variance_pct = variancePct;
   }
@@ -571,14 +808,21 @@ function updateGoalRepeatPreview() {
   const previewEl = document.getElementById('goalRepeatPreview');
   if (!previewEl) return;
 
-  syncGoalFormDefaults();
+  // IMPORTANT: Never overwrite Start Age / End Age inputs during oninput (fixes mobile editing!)
   const tag = (document.getElementById('newKnownTag').value || '').trim();
   const rawLakhs = parseFloat(document.getElementById('newKnownLakhs').value);
   const baseAge = state.current_age || 38;
   const planEndAge = state.life_expectancy || 90;
 
-  const displayTag = tag || state.selected_goal_quick_label || 'Planned Expense';
-  const amtStr = !isNaN(rawLakhs) && rawLakhs > 0 ? formatInrCompact(rawLakhs * 100000) : 'entered amount';
+  // Hide preview by default until both a label and a positive amount are entered
+  if (!tag || isNaN(rawLakhs) || rawLakhs <= 0) {
+    previewEl.textContent = '';
+    previewEl.classList.add('hidden');
+    return;
+  }
+
+  previewEl.classList.remove('hidden');
+  const amtStr = formatInrCompact(rawLakhs * 100000);
 
   if (!state.goal_form_is_recurring) {
     const targetAge = _resolveInputToAge(document.getElementById('newKnownYears').value, baseAge, baseAge);
@@ -587,7 +831,7 @@ function updateGoalRepeatPreview() {
       yrsFromNow === 0
         ? `starts immediately at Age ${targetAge}`
         : `starts in ${yrsFromNow} ${yrsFromNow === 1 ? 'year' : 'years'} at Age ${targetAge}`;
-    previewEl.textContent = `📌 ${displayTag}: One-off expense of ${amtStr} (today's ₹) — ${startDesc} (occurs 1 time).`;
+    previewEl.textContent = `📌 ${tag}: One-off expense of ${amtStr} (today's ₹) — ${startDesc} (1 time). Click "+ Add Goal" to save.`;
   } else {
     const startAge = _resolveInputToAge((document.getElementById('newKnownStartYear') || {}).value, baseAge, baseAge);
     const endAge = Math.max(
@@ -595,8 +839,6 @@ function updateGoalRepeatPreview() {
       _resolveInputToAge((document.getElementById('newKnownEndYear') || {}).value, baseAge, planEndAge)
     );
     const step = Math.max(1, parseInt((document.getElementById('newKnownEveryNYears') || {}).value, 10) || 3);
-    const varPct = state.global_variance_pct !== undefined ? state.global_variance_pct : 10;
-    const varLabel = varPct > 0 ? ` (±${varPct}% global variance)` : '';
     const yrs = computeGoalOccurrences({
       is_recurring: true,
       start_age: startAge,
@@ -609,7 +851,7 @@ function updateGoalRepeatPreview() {
       yrsFromNow === 0
         ? `starts immediately at Age ${startAge} and repeats between Age ${startAge} and Age ${endAge}`
         : `starts in ${yrsFromNow} ${yrsFromNow === 1 ? 'year' : 'years'} between Age ${startAge} and Age ${endAge}`;
-    previewEl.textContent = `🔁 ${displayTag}: ${timingDesc}, every ${step} ${step === 1 ? 'year' : 'years'} (${count} ${count === 1 ? 'time' : 'times'} total) • ${amtStr}${varLabel} each time.`;
+    previewEl.textContent = `🔁 ${tag}: ${timingDesc}, every ${step} ${step === 1 ? 'year' : 'years'} (${count} ${count === 1 ? 'time' : 'times'} total) • ${amtStr} each time. Click "+ Add Goal" to save.`;
   }
 }
 
@@ -618,7 +860,7 @@ function renderKnownExpensesList() {
   if (!container) return;
 
   if (!state.known_future_expenses.length) {
-    container.innerHTML = `<span class="text-[11px] text-slate-500 italic">No planned future expenses added yet (optional). Choose a quick label above (Education, Marriage, Vehicle, Home Improvement, Vacation) to add one.</span>`;
+    container.innerHTML = `<span class="text-[11px] text-slate-500 italic">No planned future expenses added yet (optional). Select a category above to add one.</span>`;
     return;
   }
 
@@ -635,12 +877,11 @@ function renderKnownExpensesList() {
           yrsFromNow === 0
             ? `starts immediately at Age ${sAge} (Age ${sAge}–${eAge})`
             : `starts in ${yrsFromNow} ${yrsFromNow === 1 ? 'yr' : 'yrs'} between Age ${sAge} and Age ${eAge}`;
-        const varTxt = item.variance_pct > 0 ? ` ±${item.variance_pct}%` : '';
         return `
           <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs">
             <span class="font-bold text-emerald-300">🔁 ${item.event_tag}</span>
             <span class="text-slate-200 font-semibold">${startText}, every ${item.every_n_years} yrs (${count}x)</span>
-            <span class="font-extrabold text-white">${formatInrCompact(item.amount_today_inr)}${varTxt} today</span>
+            <span class="font-extrabold text-white">${formatInrCompact(item.amount_today_inr)} today</span>
             <button type="button" onclick="removeKnownExpense(${idx})"
               class="ml-1 text-slate-400 hover:text-rose-400 font-bold" title="Remove Goal">✕</button>
           </div>
@@ -666,16 +907,18 @@ function renderKnownExpensesList() {
 }
 
 function addKnownExpenseFromInputs() {
-  syncGoalFormDefaults();
   const tag = (document.getElementById('newKnownTag').value || 'Planned Goal').trim();
   const lakhs = Math.max(0.1, parseFloat(document.getElementById('newKnownLakhs').value) || 5);
   const baseAge = state.current_age || 38;
   const planEndAge = state.life_expectancy || 90;
+  const dupWarn = document.getElementById('goalDuplicateWarning');
+  if (dupWarn) dupWarn.classList.add('hidden');
 
+  let newItem;
   if (!state.goal_form_is_recurring) {
     const targetAge = Math.max(baseAge, _resolveInputToAge(document.getElementById('newKnownYears').value, baseAge, baseAge));
     const years = Math.max(1, Math.min(75, targetAge - baseAge || 1));
-    state.known_future_expenses.push({
+    newItem = {
       event_tag: tag,
       amount_today_inr: Math.round(lakhs * 100000),
       is_recurring: false,
@@ -686,7 +929,7 @@ function addKnownExpenseFromInputs() {
       end_age: targetAge,
       every_n_years: 1,
       variance_pct: 0,
-    });
+    };
   } else {
     const varPct = Math.max(0, Math.min(100, state.global_variance_pct !== undefined ? state.global_variance_pct : 10));
     const startAge = Math.max(baseAge, _resolveInputToAge((document.getElementById('newKnownStartYear') || {}).value, baseAge, baseAge));
@@ -697,7 +940,7 @@ function addKnownExpenseFromInputs() {
     const step = Math.max(1, Math.min(30, parseInt((document.getElementById('newKnownEveryNYears') || {}).value, 10) || 3));
     const sYr = Math.max(1, Math.min(75, startAge - baseAge || 1));
     const eYr = Math.max(sYr, Math.min(75, endAge - baseAge || sYr));
-    state.known_future_expenses.push({
+    newItem = {
       event_tag: tag,
       amount_today_inr: Math.round(lakhs * 100000),
       is_recurring: true,
@@ -708,10 +951,35 @@ function addKnownExpenseFromInputs() {
       end_age: endAge,
       every_n_years: step,
       variance_pct: varPct,
-    });
+    };
   }
+
+  // Warn and prevent adding duplicate future expenses
+  const isDuplicate = state.known_future_expenses.some(
+    (ex) =>
+      String(ex.event_tag || '').trim().toLowerCase() === newItem.event_tag.toLowerCase() &&
+      Boolean(ex.is_recurring) === Boolean(newItem.is_recurring) &&
+      (ex.start_age || baseAge + (ex.start_year || 0)) === newItem.start_age
+  );
+  if (isDuplicate) {
+    if (dupWarn) dupWarn.classList.remove('hidden');
+    alert(`Duplicate goal detected: "${newItem.event_tag}" at Age ${newItem.start_age} is already added.`);
+    return;
+  }
+
+  state.known_future_expenses.push(newItem);
   state.known_future_expenses.sort((a, b) => (a.start_age || a.start_year || 0) - (b.start_age || b.start_year || 0));
   renderKnownExpensesList();
+
+  // Clear label, amount, chip highlight & preview after adding so user knows it was saved
+  document.getElementById('newKnownTag').value = '';
+  document.getElementById('newKnownLakhs').value = '';
+  state.selected_goal_quick_label = '';
+  QUICK_GOAL_LABELS.forEach((lbl) => {
+    const chipEl = document.getElementById(`goalChip_${lbl}`);
+    if (chipEl) chipEl.className = 'goal-chip';
+  });
+  updateGoalRepeatPreview();
 }
 
 function addPresetKnownExpense(tag, years, lakhs, isRecurring = false, variancePct = 0, endYear = null, everyNYears = 1) {
@@ -767,7 +1035,7 @@ function updateAdvSettings() {
   state.rebalance_frequency_years = parseInt(document.getElementById('rebalanceFreqSlider').value, 10) || 2;
   const passiveInfSlider = document.getElementById('passiveInfFreqSlider');
   if (passiveInfSlider) {
-    state.passive_income_inflation_interval_years = Math.max(1, parseInt(passiveInfSlider.value, 10) || 1);
+    state.passive_income_inflation_interval_years = Math.max(1, parseInt(passiveInfSlider.value, 10) || 3);
   }
   const passiveInfText = document.getElementById('passiveInfFreqText');
   if (passiveInfText) {
@@ -813,6 +1081,29 @@ function updateAdvSettings() {
   syncGoalFormDefaults();
   renderKnownExpensesList();
   updateGoalRepeatPreview();
+}
+
+function resetAdvSettings() {
+  const defaultTargetAge = Math.max(90, (state.current_age || 38) + 5);
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  };
+  setVal('taxDragSlider', '10.0');
+  setVal('globalVarianceSlider', '10');
+  const rebChk = document.getElementById('rebalanceEnabledChk');
+  if (rebChk) rebChk.checked = true;
+  setVal('rebalanceFreqSlider', '2');
+  setVal('passiveInfFreqSlider', '3');
+  setVal('lifeInfSlider', '0.5');
+  setVal('targetAgeSlider', String(defaultTargetAge));
+  const randChk = document.getElementById('randExpEnabledChk');
+  if (randChk) randChk.checked = true;
+  setVal('randExpBaseLakhsInput', state.has_medical_insurance === false ? '5.0' : '2.0');
+  setVal('randExpProbInput', '15');
+  setVal('samplingSelect', 'iid_bootstrap');
+  setVal('numSimsSelect', '2500');
+  updateAdvSettings();
 }
 
 // ==================== RUN HISTORICAL SIMULATIONS (DECODE MY FINANCIAL OUTLOOK) ====================
@@ -894,7 +1185,7 @@ async function triggerSimulationRun() {
     lifestyle_inflation_rate: state.lifestyle_inflation_rate,
     post_retirement_expense_multiplier: 100.0,
     property_mode: state.property_mode,
-    property_rental_yield: 2.5,
+    property_rental_yield: 0.0,
     property_liquidation_haircut: 10.0,
     tax_drag_rate: state.tax_drag_rate,
     rebalance_enabled: state.rebalance_enabled,
@@ -970,6 +1261,7 @@ function renderSimulationResults(data) {
   state.selected_retirement_age = defaultSelectedAge;
 
   applyOutcomeViewForAge(defaultSelectedAge);
+  scrollToPageTop();
 }
 
 function selectCandidateRetirementAge(age) {
@@ -1005,6 +1297,12 @@ function applyOutcomeViewForAge(age) {
   const badge = document.getElementById('resVerdictBadge');
   badge.textContent = verdict.badge;
   const badgeStyle = {
+    strong: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    financial_freedom: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    ahead_of_plan: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    on_track: 'bg-sky-500/20 text-teal-300 border-emerald-500/40',
+    needs_attention: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+    action_required: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
     retire_ready: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
     borderline: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
     at_risk: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
@@ -1041,9 +1339,8 @@ function applyOutcomeViewForAge(age) {
     if (yrsEl) yrsEl.textContent = fmtAgeSub(yrs, ageVal);
   });
 
-  // Render Charts (Wealth Trajectory + Success Rate by Age) & Table for the selected retirement age
+  // Render Wealth Trajectory Chart & Year-by-Year Table for the selected retirement age
   renderSpaghettiAndPercentileChart();
-  renderSurvivalChart(data);
   populateNotableRunsDropdown(data);
 }
 
@@ -1068,10 +1365,10 @@ function renderRetirementAgeProgression(readiness) {
     const recItem = candidates.find((c) => c.retirement_age === recommendedAge) || candidates[candidates.length - 1];
     if (bestAge !== null && bestAge !== undefined) {
       const yrText = recItem.retire_in_years === 0 ? 'Retire Today' : `in ${recItem.retire_in_years} yr${recItem.retire_in_years > 1 ? 's' : ''}`;
-      recBadge.textContent = `★ Recommended Retirement Age: Age ${recommendedAge} (${yrText} • ${recItem.success_rate_pct}% Success Rate)`;
+      recBadge.textContent = `★ Recommended: Age ${recommendedAge} (${yrText} • ${recItem.success_rate_pct}% Success)`;
       recBadge.className = 'px-3 py-1 rounded-xl text-xs font-extrabold bg-emerald-500/20 border border-emerald-500/50 text-emerald-300';
     } else {
-      recBadge.textContent = `Best Within Horizon: Age ${recommendedAge} (${recItem.success_rate_pct}% Success Rate — Below 85% Target)`;
+      recBadge.textContent = `Best Within Horizon: Age ${recommendedAge} (${recItem.success_rate_pct}% Success — Below 85%)`;
       recBadge.className = 'px-3 py-1 rounded-xl text-xs font-extrabold bg-amber-500/20 border border-amber-500/50 text-amber-300';
     }
   }
@@ -1089,96 +1386,58 @@ function renderRetirementAgeProgression(readiness) {
     }
   }
 
-  // Render Clean Retirement Age Finder Bar Chart (X-axis: Age, Y-axis: Success Rate, no redundant bar text)
-  const chartEl = document.getElementById('retirementAgeChart');
-  if (chartEl) {
-    const ctx = chartEl.getContext('2d');
-    if (charts.retirementAge) charts.retirementAge.destroy();
+  const picker = document.getElementById('retireAgePicker');
+  if (picker) {
+    picker.innerHTML = candidates
+      .map((c) => {
+        const star = c.retirement_age === bestAge ? ' ★ Recommended' : '';
+        return `<option value="${c.retirement_age}" ${c.retirement_age === selectedAge ? 'selected' : ''}>Age ${c.retirement_age} — ${c.success_rate_pct}% success${star}</option>`;
+      })
+      .join('');
+    picker.value = String(selectedAge);
+  }
 
-    const labels = candidates.map((item) => String(item.retirement_age));
-    const values = candidates.map((item) => item.success_rate_pct);
-    const bgColors = candidates.map((item) => {
-      if (item.retirement_age === selectedAge) {
-        return item.meets_target ? '#10b981' : '#6366f1';
-      }
-      if (item.retirement_age === bestAge) {
-        return 'rgba(16, 185, 129, 0.75)';
-      }
-      return item.meets_target ? 'rgba(16, 185, 129, 0.45)' : 'rgba(99, 102, 241, 0.42)';
-    });
-    const borderColors = candidates.map((item) => {
-      if (item.retirement_age === selectedAge) return '#ffffff';
-      if (item.retirement_age === bestAge) return '#34d399';
-      return 'transparent';
-    });
+  const selectedIdx = candidates.findIndex((c) => c.retirement_age === selectedAge);
+  const minusBtn = document.getElementById('btnRetireAgeMinus');
+  const plusBtn = document.getElementById('btnRetireAgePlus');
+  if (minusBtn) minusBtn.disabled = selectedIdx <= 0;
+  if (plusBtn) plusBtn.disabled = selectedIdx < 0 || selectedIdx >= candidates.length - 1;
 
-    charts.retirementAge = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'Success Rate (%)',
-            data: values,
-            backgroundColor: bgColors,
-            borderColor: borderColors,
-            borderWidth: 2,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        targetLine: { value: 85, color: '#10b981', label: '85% Target' },
-        onClick: (_e, elements) => {
-          if (elements && elements.length > 0) {
-            const clicked = candidates[elements[0].index];
-            if (clicked) {
-              selectCandidateRetirementAge(clicked.retirement_age);
-            }
-          }
-        },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (ctxItem) => {
-                const c = candidates[ctxItem.dataIndex];
-                const recNote = c.retirement_age === bestAge ? ' (★ Recommended Age)' : '';
-                return `Success Rate: ${c.success_rate_pct}%${recNote}`;
-              },
-              afterBody: (items) => {
-                if (!items || !items.length) return [];
-                const c = candidates[items[0].dataIndex];
-                if (!c) return [];
-                const lines = [];
-                if (c.median_depletion_age !== undefined) {
-                  lines.push(`Median Case: Lasts until Age ${Math.round(c.median_depletion_age)}`);
-                }
-                if (c.worst_case_depletion_age !== undefined) {
-                  lines.push(`Worst Case: Lasts until Age ${Math.round(c.worst_case_depletion_age)}`);
-                }
-                lines.push('Click bar to inspect Median & Worst Case below');
-                return lines;
-              },
-            },
-          },
-        },
-        scales: {
-          x: {
-            title: { display: true, text: 'Age', color: '#cbd5e1' },
-            ticks: { color: '#e2e8f0' },
-          },
-          y: {
-            min: 0,
-            max: 100,
-            title: { display: true, text: 'Success Rate', color: '#cbd5e1' },
-            ticks: { color: '#94a3b8', callback: (v) => `${v}%` },
-            grid: { color: 'rgba(51, 65, 85, 0.25)' },
-          },
-        },
-      },
-    });
+  const resetBtn = document.getElementById('btnResetToRecommendedAge');
+  if (resetBtn) {
+    if (selectedAge !== recommendedAge) {
+      resetBtn.classList.remove('hidden');
+      resetBtn.textContent = `↺ Back to Recommended (Age ${recommendedAge})`;
+    } else {
+      resetBtn.classList.add('hidden');
+    }
+  }
+}
+
+function stepCandidateRetirementAge(delta) {
+  const readiness = state.result && state.result.retirement_readiness;
+  if (!readiness || !Array.isArray(readiness.candidate_retirement_ages) || readiness.candidate_retirement_ages.length <= 1) {
+    return;
+  }
+  const candidates = readiness.candidate_retirement_ages;
+  const curAge =
+    state.selected_retirement_age !== null
+      ? state.selected_retirement_age
+      : readiness.evaluated_retirement_age;
+  const curIdx = candidates.findIndex((c) => c.retirement_age === curAge);
+  const nextIdx = Math.max(0, Math.min(candidates.length - 1, (curIdx >= 0 ? curIdx : 0) + delta));
+  selectCandidateRetirementAge(candidates[nextIdx].retirement_age);
+}
+
+function resetToRecommendedRetirementAge() {
+  const readiness = state.result && state.result.retirement_readiness;
+  if (!readiness) return;
+  const recAge =
+    readiness.can_retire_at_age !== null && readiness.can_retire_at_age !== undefined
+      ? readiness.can_retire_at_age
+      : readiness.evaluated_retirement_age;
+  if (recAge !== null && recAge !== undefined) {
+    selectCandidateRetirementAge(recAge);
   }
 }
 
@@ -1226,36 +1485,6 @@ function renderSpaghettiAndPercentileChart() {
   const chartEvents = data.chart_events || { events_by_age: {}, events_by_age_p50: {}, events_by_age_p10: {}, known_expense_ages: [] };
   const eventsByAgeP50 = chartEvents.events_by_age_p50 || chartEvents.events_by_age || {};
   const eventsByAgeP10 = chartEvents.events_by_age_p10 || chartEvents.events_by_age || {};
-  const knownAgesSet = new Set(chartEvents.known_expense_ages || []);
-
-  const stripEl = document.getElementById('chartEventsStrip');
-  if (stripEl) {
-    const badges = [];
-    const inp = data.inputs_summary || {};
-    (inp.known_future_expenses || []).forEach((ev) => {
-      if (ev.is_recurring) {
-        badges.push(
-          `<span class="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 font-semibold">🔁 ${ev.event_tag}: ${formatInrCompact(ev.amount_today_inr)} every ${ev.every_n_years} yrs (Yr ${ev.start_year}–${ev.end_year})</span>`
-        );
-      } else {
-        badges.push(
-          `<span class="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 font-semibold">🎯 ${ev.event_tag}: ${formatInrCompact(ev.amount_today_inr)} today @ Age ${inp.current_age + ev.years_from_now}</span>`
-        );
-      }
-    });
-    if (inp.random_expense_enabled) {
-      badges.push(
-        `<span class="px-2.5 py-1 rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-300">⚡ Random Shock: ${formatInrCompact(inp.random_expense_base_inr)} (±${inp.random_expense_variance_pct}%), ${inp.random_expense_annual_probability_pct}%/yr</span>`
-      );
-    }
-    if (inp.rebalance_enabled) {
-      const taxRate = inp.tax_drag_rate !== undefined ? inp.tax_drag_rate : inp.fixed_income_tax_rate;
-      badges.push(
-        `<span class="px-2.5 py-1 rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-indigo-300">⚖️ Rebalance: Every ${inp.rebalance_frequency_years} yrs (${taxRate}% Tax Drag)</span>`
-      );
-    }
-    stripEl.innerHTML = badges.join('');
-  }
 
   if (charts.spaghetti) charts.spaghetti.destroy();
 
@@ -1283,27 +1512,6 @@ function renderSpaghettiAndPercentileChart() {
   const p50Slice = traj.p50.slice(0, endIdx);
   const p10Slice = traj.p10.slice(0, endIdx);
 
-  const pointRadiiP50 = agesSlice.map((age) => {
-    if (knownAgesSet.has(age)) return 7;
-    const evs = eventsByAgeP50[String(age)] || [];
-    if (evs.some((e) => e.startsWith('🏠') || e.startsWith('⚡'))) return 5;
-    return 0;
-  });
-  const pointColorsP50 = agesSlice.map((age) => {
-    if (knownAgesSet.has(age)) return '#f59e0b';
-    const evs = eventsByAgeP50[String(age)] || [];
-    if (evs.some((e) => e.startsWith('🏠'))) return '#10b981';
-    if (evs.some((e) => e.startsWith('⚡'))) return '#a855f7';
-    return '#6366f1';
-  });
-
-  const pointRadiiP10 = agesSlice.map((age) => {
-    if (knownAgesSet.has(age)) return 6;
-    const evs = eventsByAgeP10[String(age)] || [];
-    if (evs.some((e) => e.startsWith('⚡'))) return 5;
-    return 0;
-  });
-
   const visibleValues = [];
   if (showP50) visibleValues.push(...p50Slice);
   if (showP10) visibleValues.push(...p10Slice);
@@ -1319,11 +1527,11 @@ function renderSpaghettiAndPercentileChart() {
       borderColor: '#6366f1',
       backgroundColor: showP10 ? 'rgba(99, 102, 241, 0.14)' : 'rgba(99, 102, 241, 0.18)',
       borderWidth: 3.5,
-      pointRadius: pointRadiiP50,
-      pointBackgroundColor: pointColorsP50,
+      pointRadius: 0,
+      pointBackgroundColor: '#6366f1',
       pointBorderColor: '#ffffff',
       pointBorderWidth: 1.5,
-      pointHoverRadius: 8,
+      pointHoverRadius: 7,
       fill: showP10 ? '+1' : 'origin',
       tension: 0.25,
       order: 1,
@@ -1337,8 +1545,8 @@ function renderSpaghettiAndPercentileChart() {
       backgroundColor: 'rgba(244, 63, 94, 0.16)',
       borderWidth: 3.5,
       borderDash: showP50 ? [6, 4] : [],
-      pointRadius: pointRadiiP10,
-      pointBackgroundColor: '#f59e0b',
+      pointRadius: 0,
+      pointBackgroundColor: '#f43f5e',
       pointBorderColor: '#ffffff',
       pointBorderWidth: 1.5,
       pointHoverRadius: 7,
@@ -1423,49 +1631,7 @@ function renderSpaghettiAndPercentileChart() {
   });
 }
 
-// ==================== CHART 2: SUCCESS RATE BY AGE ====================
-function renderSurvivalChart(data) {
-  const survivalEl = document.getElementById('survivalChart');
-  if (!survivalEl) return;
-  const ctx = survivalEl.getContext('2d');
-  const { ages, survival_probability_pct } = data.survival_curve;
-  if (charts.survival) charts.survival.destroy();
-
-  charts.survival = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: ages.map((a) => `Age ${a}`),
-      datasets: [
-        {
-          label: 'Success Rate (%)',
-          data: survival_probability_pct,
-          borderColor: '#10b981',
-          backgroundColor: 'rgba(16, 185, 129, 0.15)',
-          borderWidth: 2.5,
-          fill: true,
-          pointRadius: 0,
-          tension: 0.25,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { color: '#94a3b8', maxTicksLimit: 9, font: { size: 10 } }, grid: { color: 'rgba(51, 65, 85, 0.2)' } },
-        y: {
-          min: 0,
-          max: 100,
-          ticks: { color: '#94a3b8', font: { size: 10 }, callback: (v) => `${v}%` },
-          grid: { color: 'rgba(51, 65, 85, 0.2)' },
-        },
-      },
-    },
-  });
-}
-
-// ==================== YEAR-BY-YEAR RUN INSPECTOR (8 REQUESTED COLUMNS, MEDIAN CASE PRIORITIZED) ====================
+// ==================== YEAR-BY-YEAR RUN INSPECTOR (EVENTS COLUMN + ON-DEMAND FULL MATH AUDIT) ====================
 function populateNotableRunsDropdown(data) {
   const select = document.getElementById('notableRunSelect');
   const runs = data.notable_runs || [];
@@ -1504,34 +1670,300 @@ function renderRunInspectorTable() {
   }
 
   tbody.innerHTML = run.year_log
-    .map((row) => {
-      const eqColor = row.equity_return_pct >= 0 ? 'text-emerald-400' : 'text-rose-400';
-      const incVal = row.income_received || 0;
+    .map((row, rowIdx) => {
+      const startLiq = row.start_liquid_corpus !== undefined ? row.start_liquid_corpus : row.start_corpus || 0;
+      const endLiq = row.end_liquid_corpus !== undefined ? row.end_liquid_corpus : row.end_corpus_nominal || row.end_corpus_real || 0;
+      const endLiqReal = row.end_liquid_corpus_real !== undefined ? row.end_liquid_corpus_real : row.end_corpus_real || endLiq;
+
+      const jobVal = row.job_income || 0;
+      const rentVal = row.rental_income || 0;
+      const passVal = row.passive_income || 0;
+      const inflowsVal = row.inflows_total !== undefined ? row.inflows_total : row.income_received || 0;
+
+      const baseExpVal = row.base_living_expense !== undefined ? row.base_living_expense : row.withdrawal || 0;
+      const knownVal = row.known_event_expense || 0;
+      const shockVal = row.random_shock_expense || 0;
+      const homeImpVal = row.home_improvement_expense || 0;
       const sipVal = row.sip_contributed || 0;
-      const expVal = row.base_living_expense !== undefined ? row.base_living_expense : row.withdrawal;
+      const taxVal = row.total_tax_paid !== undefined ? row.total_tax_paid : (row.withdrawal_tax_paid || 0) + (row.rebalance_tax_paid || 0);
+      const outflowsVal =
+        row.outflows_total !== undefined
+          ? row.outflows_total
+          : (row.withdrawal || baseExpVal) + sipVal + taxVal;
+
+      const capGainVal = row.capital_gains_nominal || 0;
+      const cgColor = capGainVal >= 0 ? 'text-emerald-400' : 'text-rose-400';
+      const cgSign = capGainVal >= 0 ? '+' : '';
+      const propLiqVal = row.property_liquidated_inflow || 0;
       const eventsText = row.combined_events_summary || row.special_events_summary || '—';
-      const hasEvents = eventsText !== '—';
+
+      // Tooltip 1: Inflows Breakup
+      const inflowLines = [];
+      if (jobVal > 0) inflowLines.push(`Job / Business: ${formatInrCompact(jobVal)}`);
+      if (rentVal > 0) inflowLines.push(`Rental Income: ${formatInrCompact(rentVal)}`);
+      if (passVal > 0) inflowLines.push(`Other Passive: ${formatInrCompact(passVal)}`);
+      if (!inflowLines.length) inflowLines.push('No active income this year');
+      const inflowTip = `Inflows Breakup:\n${inflowLines.join('\n')}`;
+
+      // Tooltip 2: Outflows Breakup (Expenses + SIPs + Tax Drag)
+      const outflowLines = [`Living Expenses: ${formatInrCompact(baseExpVal)}`];
+      if (knownVal > 0) outflowLines.push(`Planned Goals: ${formatInrCompact(knownVal)}`);
+      if (shockVal > 0) outflowLines.push(`Emergency Shock: ${formatInrCompact(shockVal)}`);
+      if (homeImpVal > 0) outflowLines.push(`Home Improvement: ${formatInrCompact(homeImpVal)}`);
+      if (sipVal > 0) {
+        outflowLines.push(`SIPs Invested: ${formatInrCompact(sipVal)}`);
+      }
+      if (taxVal > 0) {
+        outflowLines.push(`Tax Drag Paid: ${formatInrCompact(taxVal)}`);
+      }
+      const outflowTip = `Outflows Breakup:\n${outflowLines.join('\n')}`;
+
+      // Tooltip 3: Capital Gains (Unrealized Gains / Losses) & Market Returns Breakup
+      const cgLines = [
+        `Market Year: ${row.sampled_india_year}`,
+        `Equity Return: ${row.equity_return_pct >= 0 ? '+' : ''}${row.equity_return_pct}%`,
+        `Fixed Income Return: +${row.debt_return_pct}%`,
+        `Inflation (CPI): ${row.inflation_pct}%`,
+      ];
+      if (row.rebalance_activity && row.rebalance_activity !== '—') {
+        cgLines.push(`Rebalancing: ${row.rebalance_activity}`);
+      }
+      const cgTip = `Unrealized Gains / Losses:\n${cgLines.join('\n')}`;
+
+      // Tooltip 4: Exact Step-by-Step Row Reconciliation Math (Start -> End Liquid Corpus)
+      const mathLines = [
+        `How Age ${row.age} Liquid Corpus Changed:`,
+        `Start Liquid Corpus: ${formatInrCompact(startLiq)}`,
+        `+ Inflows: +${formatInrCompact(inflowsVal)}`,
+        `- Outflows (Exp + SIPs + Tax Drag): -${formatInrCompact(outflowsVal)}`,
+      ];
+      if (sipVal > 0) mathLines.push(`+ SIPs Added to Corpus: +${formatInrCompact(sipVal)}`);
+      if (propLiqVal > 0) mathLines.push(`+ Property Liquidated: +${formatInrCompact(propLiqVal)}`);
+      mathLines.push(`± Capital Gains: ${cgSign}${formatInrCompact(capGainVal)}`);
+      mathLines.push(`= Ending Liquid Corpus: ${formatInrCompact(endLiq)}`);
+      mathLines.push(`(In Today's ₹ Value: ${formatInrCompact(endLiqReal)})`);
+      const rowMathTip = mathLines.join('\n');
 
       return `
-        <tr class="hover:bg-slate-800/40">
-          <td data-label="Age" class="py-2 px-2.5 font-semibold text-white">Age ${row.age}</td>
-          <td data-label="Market Year" class="py-2 px-2.5 font-mono text-indigo-300 font-bold">${row.sampled_india_year}</td>
-          <td data-label="Returns & Inflation" class="py-2 px-2.5 mobile-col-span-2">
-            <span class="font-bold ${eqColor}">${row.equity_return_pct >= 0 ? '+' : ''}${row.equity_return_pct}% Eq</span>
-            <span class="text-slate-500 mx-1">/</span>
-            <span class="text-emerald-300">+${row.debt_return_pct}% FD</span>
-            <span class="text-slate-500 mx-1">/</span>
-            <span class="text-amber-300">${row.inflation_pct}% Inf</span>
+        <tr class="hover:bg-slate-800/40" title="${rowMathTip.replace(/\n/g, ' | ')}">
+          <td data-label="Age (Mkt Yr)" class="py-2.5 px-2.5">
+            <span class="font-bold text-white">Age ${row.age}</span>
+            <span class="text-[10px] font-mono text-indigo-300 block">Mkt Yr ${row.sampled_india_year}</span>
           </td>
-          <td data-label="Income" class="py-2 px-2.5 ${incVal > 0 ? 'text-emerald-300 font-semibold' : 'text-slate-500'}">${incVal > 0 ? formatInrCompact(incVal) : '—'}</td>
-          <td data-label="SIPs" class="py-2 px-2.5 ${sipVal > 0 ? 'text-indigo-300 font-semibold' : 'text-slate-500'}">${sipVal > 0 ? formatInrCompact(sipVal) : '—'}</td>
-          <td data-label="Expenses" class="py-2 px-2.5 font-semibold text-white">${formatInrCompact(expVal)}</td>
-          <td data-label="Events" class="py-2 px-2.5 mobile-col-span-2 ${hasEvents ? 'text-amber-300 font-medium' : 'text-slate-500'}">${eventsText}</td>
-          <td data-label="Ending Wealth" class="py-2 px-2.5 font-bold text-white">${formatInrCompact(row.end_corpus_real)}</td>
+          <td data-label="Starting Liquid Corpus" class="py-2.5 px-2.5 font-semibold text-slate-200">
+            ${formatInrCompact(startLiq)}
+          </td>
+          <td data-label="Inflows" class="py-2.5 px-2.5">
+            <span class="cell-tip-wrap ${inflowsVal > 0 ? 'text-emerald-300 font-semibold' : 'text-slate-500'}" tabindex="0">
+              <span>${inflowsVal > 0 ? '+' + formatInrCompact(inflowsVal) : '₹0'}</span>
+              <span class="cell-tip-box">${inflowTip}</span>
+            </span>
+          </td>
+          <td data-label="Outflows" class="py-2.5 px-2.5">
+            <span class="cell-tip-wrap text-amber-300 font-semibold" tabindex="0">
+              <span>-${formatInrCompact(outflowsVal)}</span>
+              <span class="cell-tip-box">${outflowTip}</span>
+            </span>
+          </td>
+          <td data-label="Capital Gains" class="py-2.5 px-2.5">
+            <span class="cell-tip-wrap font-bold ${cgColor}" tabindex="0">
+              <span>${cgSign}${formatInrCompact(capGainVal)}</span>
+              <span class="cell-tip-box">${cgTip}</span>
+            </span>
+          </td>
+          <td data-label="Ending Liquid Corpus" class="py-2.5 px-2.5">
+            <span class="cell-tip-wrap cell-tip-right font-extrabold text-white" tabindex="0">
+              <span>${formatInrCompact(endLiq)}</span>
+              <span class="text-[10px] text-indigo-300 font-normal">ⓘ</span>
+              <span class="cell-tip-box">${rowMathTip}</span>
+            </span>
+          </td>
+          <td data-label="Events" class="py-2.5 px-2.5 text-[11px] ${eventsText !== '—' ? 'text-amber-200 font-medium' : 'text-slate-500'}">
+            ${eventsText}
+          </td>
+          <td data-label="Full Calculation" class="py-2.5 px-2.5">
+            <button type="button" id="yearMathBtn_${rowIdx}" onclick="toggleYearMathRow(${rowIdx})"
+              class="px-2.5 py-1 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/30 border border-indigo-500/40 text-[11px] font-bold text-indigo-300 transition">
+              Math ▸
+            </button>
+          </td>
+        </tr>
+        <tr id="yearMathRow_${rowIdx}" class="hidden year-math-inline-row">
+          <td colspan="8" class="p-3 sm:p-4 bg-slate-950/90">
+            <div id="yearMathContent_${rowIdx}"></div>
+          </td>
         </tr>
       `;
     })
     .join('');
+}
+
+function buildYearMathHtml(row, rowIdx) {
+  const startLiq = row.start_liquid_corpus !== undefined ? row.start_liquid_corpus : row.start_corpus || 0;
+  const startCash = row.start_cash || 0;
+  const startFi = row.start_fi || 0;
+  const startEq = row.start_eq || 0;
+  const endLiq = row.end_liquid_corpus !== undefined ? row.end_liquid_corpus : row.end_corpus_nominal || 0;
+  const endLiqReal = row.end_liquid_corpus_real !== undefined ? row.end_liquid_corpus_real : row.end_corpus_real || endLiq;
+  const endCash = row.end_cash || 0;
+  const endFi = row.end_fi || 0;
+  const endEq = row.end_eq || 0;
+
+  const jobVal = row.job_income || 0;
+  const rentVal = row.rental_income || 0;
+  const passVal = row.passive_income || 0;
+  const inflowsVal = row.inflows_total !== undefined ? row.inflows_total : row.income_received || 0;
+
+  const baseExpVal = row.base_living_expense !== undefined ? row.base_living_expense : row.withdrawal || 0;
+  const knownVal = row.known_event_expense || 0;
+  const shockVal = row.random_shock_expense || 0;
+  const homeImpVal = row.home_improvement_expense || 0;
+  const totalExpenses = row.withdrawal !== undefined ? row.withdrawal : baseExpVal + knownVal + shockVal + homeImpVal;
+
+  const cashReserve = row.cash_reserve_floor || 0;
+  const bankPaid = row.bank_paid_expenses || 0;
+  const fiGross = row.withdrawn_fi_gross || 0;
+  const eqGross = row.withdrawn_eq_gross || 0;
+  const wTax = row.withdrawal_tax_paid || 0;
+  const rTax = row.rebalance_tax_paid || 0;
+  const totTax = row.total_tax_paid !== undefined ? row.total_tax_paid : wTax + rTax;
+  const eqSip = row.eq_sip || 0;
+  const fiSip = row.fi_sip || 0;
+  const sipVal = row.sip_contributed || 0;
+  const outflowsVal = row.outflows_total !== undefined ? row.outflows_total : totalExpenses + sipVal + totTax;
+  const propLiqVal = row.property_liquidated_inflow || 0;
+
+  const liqBeforeRet = row.liquid_before_returns !== undefined ? row.liquid_before_returns : Math.max(0, endLiq - (row.capital_gains_nominal || 0));
+  const eqCg = row.eq_cap_gains || 0;
+  const fiCg = row.fi_cap_gains || 0;
+  const cashCg = row.cash_cap_gains || 0;
+  const capGainVal = row.capital_gains_nominal || 0;
+  const cpiFactor = row.cumulative_cpi_factor || 1;
+  const eventsText = row.combined_events_summary || 'No special events this year';
+
+  const fmtSigned = (v) => `${v >= 0 ? '+' : ''}${formatInrCompact(v)}`;
+
+  return `
+    <div class="space-y-3">
+      <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-800">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-400 block">Full Calculation Audit</span>
+          <span class="text-xs sm:text-sm font-extrabold text-white">Age ${row.age} • Year ${row.sim_year} (India Mkt Yr ${row.sampled_india_year})</span>
+        </div>
+        <button type="button" onclick="toggleYearMathRow(${rowIdx})"
+          class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-300 hover:text-white shrink-0 transition">
+          ✕ Collapse
+        </button>
+      </div>
+
+      <div class="year-math-grid">
+        <div class="year-math-card space-y-1.5">
+          <div class="year-math-line border-b border-slate-800 pb-1">
+            <span class="year-math-lbl font-bold text-indigo-300 uppercase text-[10px] tracking-wider">1. Opening Liquid Corpus</span>
+            <span class="year-math-val font-extrabold text-white">${formatInrCompact(startLiq)}</span>
+          </div>
+          <div class="year-math-line text-slate-300"><span class="year-math-lbl">Bank Cash (Reserve: ${formatInrCompact(cashReserve)})</span><span class="year-math-val">${formatInrCompact(startCash)}</span></div>
+          <div class="year-math-line text-slate-300"><span class="year-math-lbl">Fixed Income</span><span class="year-math-val">${formatInrCompact(startFi)}</span></div>
+          <div class="year-math-line text-slate-300"><span class="year-math-lbl">Equity</span><span class="year-math-val">${formatInrCompact(startEq)}</span></div>
+          <div class="year-math-line text-white font-bold pt-1 border-t border-slate-800/80"><span class="year-math-lbl">= Starting Liquid Corpus</span><span class="year-math-val">${formatInrCompact(startLiq)}</span></div>
+        </div>
+
+        <div class="year-math-card space-y-1.5">
+          <div class="year-math-line border-b border-slate-800 pb-1">
+            <span class="year-math-lbl font-bold text-emerald-400 uppercase text-[10px] tracking-wider">2. Inflows (To Bank)</span>
+            <span class="year-math-val font-extrabold text-emerald-300">+${formatInrCompact(inflowsVal)}</span>
+          </div>
+          <div class="year-math-line text-slate-300"><span class="year-math-lbl">Job / Business Income</span><span class="year-math-val">+${formatInrCompact(jobVal)}</span></div>
+          <div class="year-math-line text-slate-300"><span class="year-math-lbl">Rental Income</span><span class="year-math-val">+${formatInrCompact(rentVal)}</span></div>
+          <div class="year-math-line text-slate-300"><span class="year-math-lbl">Other Passive Income</span><span class="year-math-val">+${formatInrCompact(passVal)}</span></div>
+          <div class="year-math-line text-emerald-300 font-bold pt-1 border-t border-slate-800/80"><span class="year-math-lbl">= Total Inflows</span><span class="year-math-val">+${formatInrCompact(inflowsVal)}</span></div>
+        </div>
+
+        <div class="year-math-card space-y-1.5">
+          <div class="year-math-line border-b border-slate-800 pb-1">
+            <span class="year-math-lbl font-bold text-amber-400 uppercase text-[10px] tracking-wider">3. Outflows & Waterfall</span>
+            <span class="year-math-val font-extrabold text-amber-300">-${formatInrCompact(outflowsVal)}</span>
+          </div>
+          <div class="year-math-line text-slate-300"><span class="year-math-lbl">Base Living Expenses</span><span class="year-math-val">${formatInrCompact(baseExpVal)}</span></div>
+          <div class="year-math-line text-slate-300"><span class="year-math-lbl">Planned Future Goals</span><span class="year-math-val">${formatInrCompact(knownVal)}</span></div>
+          <div class="year-math-line text-slate-300"><span class="year-math-lbl">Emergency Shock</span><span class="year-math-val">${formatInrCompact(shockVal)}</span></div>
+          ${homeImpVal > 0 ? `<div class="year-math-line text-slate-300"><span class="year-math-lbl">Home Improvement</span><span class="year-math-val">${formatInrCompact(homeImpVal)}</span></div>` : ''}
+          <div class="year-math-line text-slate-200 font-semibold pt-1 border-t border-slate-800/60"><span class="year-math-lbl">Subtotal: Expenses</span><span class="year-math-val">${formatInrCompact(totalExpenses)}</span></div>
+          <div class="year-math-line text-slate-400"><span class="year-math-lbl">• Paid from Excess Bank Cash</span><span class="year-math-val">${formatInrCompact(bankPaid)}</span></div>
+          <div class="year-math-line text-slate-400"><span class="year-math-lbl">• Fixed Income Redeemed (Gross)</span><span class="year-math-val">${formatInrCompact(fiGross)}</span></div>
+          <div class="year-math-line text-slate-400"><span class="year-math-lbl">• Equity Redeemed (Gross)</span><span class="year-math-val">${formatInrCompact(eqGross)}</span></div>
+          ${propLiqVal > 0 ? `<div class="year-math-line text-emerald-300"><span class="year-math-lbl">• Property Liquidated Inflow</span><span class="year-math-val">+${formatInrCompact(propLiqVal)}</span></div>` : ''}
+          <div class="year-math-line text-slate-300 pt-1 border-t border-slate-800/60"><span class="year-math-lbl">SIPs from Excess Cash (Eq ${formatInrCompact(eqSip)} + FI ${formatInrCompact(fiSip)})</span><span class="year-math-val">${formatInrCompact(sipVal)}</span></div>
+          <div class="year-math-line text-slate-300"><span class="year-math-lbl">Tax Drag (W/D ${formatInrCompact(wTax)} + Rebal ${formatInrCompact(rTax)})</span><span class="year-math-val">${formatInrCompact(totTax)}</span></div>
+          <div class="year-math-line text-amber-300 font-bold pt-1 border-t border-slate-800/80"><span class="year-math-lbl">= Total Outflows</span><span class="year-math-val">-${formatInrCompact(outflowsVal)}</span></div>
+        </div>
+
+        <div class="space-y-2.5">
+          <div class="year-math-card space-y-1.5">
+            <div class="year-math-line border-b border-slate-800 pb-1">
+              <span class="year-math-lbl font-bold text-emerald-400 uppercase text-[10px] tracking-wider">4. Market Returns (Capital Gains)</span>
+              <span class="year-math-val font-extrabold ${capGainVal >= 0 ? 'text-emerald-300' : 'text-rose-400'}">${fmtSigned(capGainVal)}</span>
+            </div>
+            <div class="year-math-line text-slate-300"><span class="year-math-lbl">Remaining Corpus Before Returns</span><span class="year-math-val">${formatInrCompact(liqBeforeRet)}</span></div>
+            <div class="year-math-line text-slate-300"><span class="year-math-lbl">Equity (${row.equity_return_pct >= 0 ? '+' : ''}${row.equity_return_pct}%)</span><span class="year-math-val">${fmtSigned(eqCg)}</span></div>
+            <div class="year-math-line text-slate-300"><span class="year-math-lbl">Fixed Income (+${row.debt_return_pct}%)</span><span class="year-math-val">${fmtSigned(fiCg)}</span></div>
+            <div class="year-math-line text-slate-300"><span class="year-math-lbl">Cash Inflation Adj (CPI ${row.inflation_pct}%)</span><span class="year-math-val">${fmtSigned(cashCg)}</span></div>
+            <div class="year-math-line font-bold pt-1 border-t border-slate-800/80 ${capGainVal >= 0 ? 'text-emerald-300' : 'text-rose-400'}"><span class="year-math-lbl">= Capital Gains</span><span class="year-math-val">${fmtSigned(capGainVal)}</span></div>
+          </div>
+
+          <div class="year-math-card space-y-1">
+            <span class="font-bold text-indigo-300 uppercase text-[10px] tracking-wider block">5. Events & Rebalancing</span>
+            <div class="text-[11px] text-amber-200">${eventsText}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-indigo-950/40 border border-indigo-500/40 rounded-xl p-3 space-y-1.5">
+        <div class="year-math-line border-b border-indigo-500/30 pb-1">
+          <span class="year-math-lbl font-bold text-white uppercase text-[10px] tracking-wider">6. Exact Reconciliation (Start → End)</span>
+          <span class="year-math-val font-extrabold text-white">${formatInrCompact(endLiq)}</span>
+        </div>
+        <div class="year-math-line text-slate-200"><span class="year-math-lbl">Starting Liquid Corpus</span><span class="year-math-val">${formatInrCompact(startLiq)}</span></div>
+        <div class="year-math-line text-emerald-300"><span class="year-math-lbl">+ Inflows</span><span class="year-math-val">+${formatInrCompact(inflowsVal)}</span></div>
+        <div class="year-math-line text-amber-300"><span class="year-math-lbl">− Outflows (Exp + SIPs + Tax Drag)</span><span class="year-math-val">-${formatInrCompact(outflowsVal)}</span></div>
+        ${sipVal > 0 ? `<div class="year-math-line text-indigo-300"><span class="year-math-lbl">+ SIPs Added to Eq/FI Corpus</span><span class="year-math-val">+${formatInrCompact(sipVal)}</span></div>` : ''}
+        ${propLiqVal > 0 ? `<div class="year-math-line text-emerald-300"><span class="year-math-lbl">+ Property Liquidated</span><span class="year-math-val">+${formatInrCompact(propLiqVal)}</span></div>` : ''}
+        <div class="year-math-line ${capGainVal >= 0 ? 'text-emerald-300' : 'text-rose-400'}"><span class="year-math-lbl">± Capital Gains</span><span class="year-math-val">${fmtSigned(capGainVal)}</span></div>
+        <div class="year-math-line text-white font-extrabold pt-1 border-t border-indigo-500/40"><span class="year-math-lbl">= Ending Liquid Corpus (Cash ${formatInrCompact(endCash)} + FI ${formatInrCompact(endFi)} + Eq ${formatInrCompact(endEq)})</span><span class="year-math-val">${formatInrCompact(endLiq)}</span></div>
+        <div class="year-math-line text-slate-400"><span class="year-math-lbl">In Today's ₹ (÷ ${cpiFactor.toFixed(2)}× inflation)</span><span class="year-math-val">${formatInrCompact(endLiqReal)}</span></div>
+      </div>
+
+      <div class="flex justify-end">
+        <button type="button" onclick="toggleYearMathRow(${rowIdx})"
+          class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-300 hover:text-white transition">
+          ▲ Collapse Age ${row.age} Math
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function toggleYearMathRow(rowIdx) {
+  const data = state.result;
+  if (!data || !data.notable_runs) return;
+  const runIdx = parseInt(document.getElementById('notableRunSelect').value, 10) || 0;
+  const run = data.notable_runs[runIdx];
+  if (!run || !run.year_log || !run.year_log[rowIdx]) return;
+
+  const detailRow = document.getElementById(`yearMathRow_${rowIdx}`);
+  const contentEl = document.getElementById(`yearMathContent_${rowIdx}`);
+  const btnEl = document.getElementById(`yearMathBtn_${rowIdx}`);
+  if (!detailRow || !contentEl) return;
+
+  const isCurrentlyHidden = detailRow.classList.contains('hidden');
+  if (isCurrentlyHidden) {
+    contentEl.innerHTML = buildYearMathHtml(run.year_log[rowIdx], rowIdx);
+    detailRow.classList.remove('hidden');
+    if (btnEl) btnEl.textContent = 'Hide ▾';
+  } else {
+    detailRow.classList.add('hidden');
+    if (btnEl) btnEl.textContent = 'Math ▸';
+  }
 }
 
 // ==================== MODULE / SCREEN SWITCHING ====================
@@ -1880,6 +2312,9 @@ if (typeof module !== 'undefined' && module.exports) {
     state,
     charts,
     expenseState,
+    QA_PERSONAS,
+    toggleQaPersonaPanel,
+    applyQaPersona,
     formatInrCompact,
     isStep1Complete,
     syncGoalFormDefaults,
@@ -1908,17 +2343,21 @@ if (typeof module !== 'undefined' && module.exports) {
     removeKnownExpense,
     toggleAdvancedDrawer,
     updateAdvSettings,
+    resetAdvSettings,
     triggerSimulationRun,
     renderSimulationResults,
     selectCandidateRetirementAge,
+    stepCandidateRetirementAge,
+    resetToRecommendedRetirementAge,
     applyOutcomeViewForAge,
     renderRetirementAgeProgression,
     setCurveFocus,
     switchChartScale,
     renderSpaghettiAndPercentileChart,
-    renderSurvivalChart,
     populateNotableRunsDropdown,
     renderRunInspectorTable,
+    buildYearMathHtml,
+    toggleYearMathRow,
     switchAppScreen,
     syncActiveModulesNav,
     setupDropZone,

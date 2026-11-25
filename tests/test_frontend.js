@@ -188,8 +188,12 @@ function getElement(id) {
 }
 
 const windowListeners = {};
+let scrollToCalls = 0;
 global.window = {
   devicePixelRatio: 2,
+  scrollTo() {
+    scrollToCalls += 1;
+  },
   addEventListener(type, fn) {
     if (!windowListeners[type]) windowListeners[type] = [];
     windowListeners[type].push(fn);
@@ -204,6 +208,8 @@ global.window = {
 };
 
 global.document = {
+  documentElement: { scrollTop: 100 },
+  body: { scrollTop: 100 },
   getElementById: (id) => getElement(id),
 };
 
@@ -382,16 +388,37 @@ async function runAllTests() {
     canvas.dispatchEvent('mousemove', { clientX: 200, clientY: 150 });
     lineChart2.destroy();
 
+    let clickedBarIdx = -1;
     const vBarChart = new LocalChart(canvas, {
       type: 'bar',
       data: {
         labels: ['0-5 yrs', '5-10 yrs', 'Very Long Label Exceeding Limit'],
-        datasets: [{ label: '% Runs', data: [10, 25, 65], backgroundColor: ['#6366f1', '#10b981', '#f59e0b'] }],
+        datasets: [
+          {
+            label: '% Runs',
+            data: [10, 25, 65],
+            backgroundColor: ['#6366f1', '#10b981', '#f59e0b'],
+            borderColor: ['#ffffff', '#34d399', 'transparent'],
+            borderWidth: 2,
+          },
+        ],
       },
-      options: { plugins: { legend: { display: false } } },
+      options: {
+        targetLine: { value: 85, color: '#10b981', label: '85% Target' },
+        onClick: (_e, elements) => {
+          if (elements && elements.length > 0) clickedBarIdx = elements[0].index;
+        },
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { title: { display: true, text: 'Horizon', color: '#cbd5e1' } },
+          y: { title: { display: true, text: 'Rate', color: '#cbd5e1' }, min: 0, max: 100 },
+        },
+      },
     });
     canvas.dispatchEvent('mousemove', { clientX: 180, clientY: 140 });
     assert.ok(vBarChart._hoverIndex >= 0);
+    canvas.dispatchEvent('click', { clientX: 180, clientY: 140 });
+    assert.ok(clickedBarIdx >= 0);
     vBarChart.destroy();
 
     const hBarChart = new LocalChart(canvas, {
@@ -436,8 +463,11 @@ async function runAllTests() {
     assert.equal(appModule.isStep1Complete(), true);
 
     for (const s of [1, 2, 3, 4, 5]) {
+      const prevScrolls = scrollToCalls;
       appModule.goToStep(s);
       assert.equal(appModule.state.step, s);
+      assert.equal(scrollToCalls, prevScrolls + 1);
+      assert.equal(global.document.documentElement.scrollTop, 0);
     }
     appModule.returnToWizard(1);
     assert.equal(appModule.state.step, 1);
@@ -500,9 +530,36 @@ async function runAllTests() {
     appModule.switchExpenseFreq('monthly');
     assert.equal(appModule.state.expense_frequency, 'monthly');
 
-    // Quick labels for One-Off (Education, Marriage, Vehicle) and Recurring (Home Improvement, Vacation)
+    // Quick labels preserve entered values & preview stays hidden until label + amount are entered
+    getElement('newKnownTag').value = '';
+    getElement('newKnownLakhs').value = '';
+    appModule.updateGoalRepeatPreview();
+    assert.equal(getElement('goalRepeatPreview').classList.contains('hidden'), true);
+
+    getElement('newKnownLakhs').value = '15';
+    getElement('newKnownYears').value = '43';
+    appModule.selectGoalQuickLabel('Vehicle');
+    assert.equal(getElement('newKnownLakhs').value, '15');
+    assert.equal(getElement('newKnownYears').value, '43');
+    assert.equal(getElement('goalRepeatPreview').classList.contains('hidden'), false);
+    // Switching between One-Off and Recurring carries over values instead of resetting
+    appModule.setGoalFormMode(true);
+    assert.equal(getElement('newKnownStartYear').value, '43');
+    appModule.setGoalFormMode(false);
+    assert.equal(getElement('newKnownYears').value, '43');
+
     appModule.selectGoalQuickLabel('Vehicle', false, 15, 10, 43, 43, 1);
     appModule.addKnownExpenseFromInputs();
+    // Adding clears label & hides preview
+    assert.equal(getElement('newKnownTag').value, '');
+    assert.equal(getElement('goalRepeatPreview').classList.contains('hidden'), true);
+
+    // Adding the same goal again triggers duplicate warning and does not duplicate it
+    appModule.selectGoalQuickLabel('Vehicle', false, 15, 10, 43, 43, 1);
+    const countBeforeDup = appModule.state.known_future_expenses.length;
+    appModule.addKnownExpenseFromInputs();
+    assert.equal(appModule.state.known_future_expenses.length, countBeforeDup);
+    assert.ok(String(lastAlert).includes('Duplicate goal'));
     // Recurring with empty End Age -> defaults to End of Plan
     appModule.selectGoalQuickLabel('Vacation', true, 2, 15, 40, '', 2);
     appModule.addKnownExpenseFromInputs();
@@ -517,9 +574,25 @@ async function runAllTests() {
 
     appModule.toggleAdvancedDrawer();
     getElement('rebalanceEnabledChk').checked = false;
+    getElement('taxDragSlider').value = '18.0';
+    getElement('passiveInfFreqSlider').value = '5';
     appModule.updateAdvSettings();
-    getElement('rebalanceEnabledChk').checked = true;
-    appModule.updateAdvSettings();
+    assert.equal(appModule.state.tax_drag_rate, 18.0);
+    assert.equal(appModule.state.passive_income_inflation_interval_years, 5);
+    appModule.resetAdvSettings();
+    assert.equal(appModule.state.tax_drag_rate, 10.0);
+    assert.equal(appModule.state.passive_income_inflation_interval_years, 3);
+    assert.equal(appModule.state.rebalance_enabled, true);
+
+    // Hidden QA Persona Autofill drawer: toggle & apply all 6 personas
+    appModule.toggleQaPersonaPanel();
+    Object.keys(appModule.QA_PERSONAS).forEach((key) => {
+      appModule.applyQaPersona(key);
+      assert.equal(appModule.state.current_age, appModule.QA_PERSONAS[key].age);
+      assert.equal(appModule.state.expense_amount, appModule.QA_PERSONAS[key].expenseMo);
+    });
+    appModule.applyQaPersona('nonexistent_key');
+    appModule.toggleQaPersonaPanel();
   });
 
   await runCase('test_simulation_runner_when_can_i_retire_separate_tooltips_and_inspector', async () => {
@@ -779,23 +852,35 @@ async function runAllTests() {
     assert.ok(p10Body.some((l) => l.includes('Worst Case')));
     assert.equal(spTooltip.afterBody([]).length, 0);
 
-    // Verify Retirement Age Finder Bar Chart & selecting an earlier age (Age 38 before recommended Age 40)
-    const retChart = appModule.charts.retirementAge;
-    assert.ok(retChart);
-    const retTooltip = retChart.options.plugins.tooltip.callbacks;
-    assert.ok(retTooltip.label({ dataIndex: 2 }).includes('88.5%'));
-    assert.ok(retTooltip.afterBody([{ dataIndex: 0 }]).some((l) => l.includes('Median Case')));
+    // Verify Events column and Inline Expandable Year Math Row (expand & collapse)
+    assert.ok(getElement('runInspectorTableBody').innerHTML.includes('Education'));
+    getElement('yearMathRow_0').classList.add('hidden');
+    appModule.toggleYearMathRow(0);
+    assert.equal(getElement('yearMathRow_0').classList.contains('hidden'), false);
+    assert.ok(getElement('yearMathContent_0').innerHTML.includes('Opening Liquid Corpus'));
+    assert.ok(getElement('yearMathContent_0').innerHTML.includes('Exact Reconciliation'));
+    appModule.toggleYearMathRow(0);
+    assert.equal(getElement('yearMathRow_0').classList.contains('hidden'), true);
+    getElement('yearMathRow_1').classList.add('hidden');
+    appModule.toggleYearMathRow(1);
+    assert.ok(getElement('yearMathContent_1').innerHTML.includes('Education'));
+    appModule.toggleYearMathRow(1);
 
-    // Click first bar (Age 38) on the Retirement Age Finder Bar Chart
-    const retCanvas = getElement('retirementAgeChart');
-    retCanvas.dispatchEvent('click', { clientX: 90, clientY: 120 });
+    // Verify Retirement Age Explorer: stepping earlier/later and resetting back to recommended age
+    assert.equal(appModule.state.selected_retirement_age, 40);
+    assert.equal(getElement('btnResetToRecommendedAge').classList.contains('hidden'), true);
+    appModule.stepCandidateRetirementAge(-1);
+    assert.equal(appModule.state.selected_retirement_age, 39);
+    assert.equal(getElement('btnResetToRecommendedAge').classList.contains('hidden'), false);
+    appModule.stepCandidateRetirementAge(-1);
     assert.equal(appModule.state.selected_retirement_age, 38);
     assert.equal(getElement('cardP50Age').textContent, 'Lasts until 80');
     assert.equal(getElement('cardP10Age').textContent, 'Lasts until 58');
 
-    // Also test selecting back to recommended Age 40
-    appModule.selectCandidateRetirementAge(40);
+    // Reset back to recommended Age 40
+    appModule.resetToRecommendedRetirementAge();
     assert.equal(appModule.state.selected_retirement_age, 40);
+    assert.equal(getElement('btnResetToRecommendedAge').classList.contains('hidden'), true);
 
     // Also test empty retirement_readiness branch
     appModule.renderRetirementAgeProgression(null);

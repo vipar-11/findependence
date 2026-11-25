@@ -327,10 +327,25 @@ def simulate_portfolio_paths(
 
     drawable_nominal = np.zeros((n_paths, horizon_years + 1), dtype=np.float64)
     net_worth_nominal = np.zeros((n_paths, horizon_years + 1), dtype=np.float64)
+    liquid_corpus_nominal = np.zeros((n_paths, horizon_years + 1), dtype=np.float64)
     cash_balance_nominal = np.zeros((n_paths, horizon_years + 1), dtype=np.float64)
+    eq_balance_nominal = np.zeros((n_paths, horizon_years + 1), dtype=np.float64)
+    fi_balance_nominal = np.zeros((n_paths, horizon_years + 1), dtype=np.float64)
+    bank_paid_expenses_nominal = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    cash_reserve_floor_nominal = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    liquid_before_returns_nominal = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    eq_cap_gains_nominal = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    fi_cap_gains_nominal = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    cash_cap_gains_nominal = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    job_income_series = np.zeros((n_paths, horizon_years), dtype=np.float64)
     rental_income_series = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    passive_income_series = np.zeros((n_paths, horizon_years), dtype=np.float64)
     total_income_series = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    eq_sip_series = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    fi_sip_series = np.zeros((n_paths, horizon_years), dtype=np.float64)
     total_sip_series = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    capital_gains_nominal = np.zeros((n_paths, horizon_years), dtype=np.float64)
+    property_liquidated_series = np.zeros((n_paths, horizon_years), dtype=np.float64)
 
     rs100_equity = np.full((n_paths, horizon_years + 1), 100.0, dtype=np.float64)
     rs100_fd = np.full((n_paths, horizon_years + 1), 100.0, dtype=np.float64)
@@ -362,8 +377,11 @@ def simulate_portfolio_paths(
         return eq + fi
 
     drawable_nominal[:, 0] = _get_drawable(eq_val, fi_val, prop_val)
+    liquid_corpus_nominal[:, 0] = eq_val + fi_val + cash_val
     net_worth_nominal[:, 0] = eq_val + fi_val + cash_val + prop_val
     cash_balance_nominal[:, 0] = cash_val
+    eq_balance_nominal[:, 0] = eq_val
+    fi_balance_nominal[:, 0] = fi_val
 
     years_lasted = np.full(n_paths, float(horizon_years), dtype=np.float64)
     depleted_mask = np.zeros(n_paths, dtype=bool)
@@ -375,16 +393,18 @@ def simulate_portfolio_paths(
     for t in range(horizon_years):
         active = ~depleted_mask
         if not np.any(active):
-            cash_balance_nominal[:, t + 1] = np.maximum(
-                cash_val, initial_cash_inr * cumulative_cpi[:, t + 1]
-            )
+            cash_val = np.maximum(cash_val, initial_cash_inr * cumulative_cpi[:, t + 1])
+            cash_balance_nominal[:, t + 1] = cash_val
+            liquid_corpus_nominal[:, t + 1] = eq_val + fi_val + cash_val
+            net_worth_nominal[:, t + 1] = eq_val + fi_val + cash_val + prop_val
             continue
 
         # 1. Income streams in year t (Job/Business + Rental + Other Passive)
         if t < job_income_years and job_annual_income > 0:
-            job_inc_t: float | np.ndarray = job_annual_income * cumulative_job_growth[:, t]
+            job_inc_t: np.ndarray = job_annual_income * cumulative_job_growth[:, t]
         else:
-            job_inc_t = 0.0
+            job_inc_t = np.zeros(n_paths, dtype=np.float64)
+        job_income_series[:, t] = job_inc_t
 
         # Rental & Passive income step up for cumulative inflation every `passive_inf_step` years
         step_cpi_t = (t // passive_inf_step) * passive_inf_step
@@ -399,8 +419,9 @@ def simulate_portfolio_paths(
         passive_t = (
             other_passive_annual_income * cumulative_cpi[:, step_cpi_t]
             if other_passive_annual_income > 0
-            else 0.0
+            else np.zeros(n_paths, dtype=np.float64)
         )
+        passive_income_series[:, t] = passive_t
         tot_inc_t = rent_t + job_inc_t + passive_t
         total_income_series[:, t] = tot_inc_t
 
@@ -434,31 +455,45 @@ def simulate_portfolio_paths(
         tot_exp_t = base_expenses_nominal[:, t] + home_imp_t + shock_nom_t + known_nom_t
         total_expenses_nominal[:, t] = tot_exp_t
 
-        # 5. Ongoing SIP Contributions in year t:
-        # SIPs continue until end of income (`t < sip_duration_years` and `tot_inc_t > 0`)
-        # and DO NOT happen in any year/path where there is no sufficient room in income after expenses.
+        # 5. Bank-First Cashflow Waterfall:
+        #    (a) All Inflows go into the Bank (`cash_val`) first.
+        #    (b) Outflows (Expenses) are paid first from the Bank WITHOUT dipping below
+        #        the inflation-adjusted reserve (`cash_reserve_t = initial_cash_inr * cumulative_cpi[:, t]`).
+        #    (c) SIPs are funded ONLY from remaining Bank cash above reserve (reduced or paused if insufficient;
+        #        NEVER redeem Fixed Income or Equity for an SIP).
+        #    (d) Any remaining expense shortfall (`net_need > 0`) redeems Fixed Income first, then Equity.
+        cash_reserve_t = initial_cash_inr * cumulative_cpi[:, t]
+        cash_reserve_floor_nominal[:, t] = cash_reserve_t
+        cash_val = np.where(active, cash_val + tot_inc_t, cash_val)
+
+        bank_avail_for_exp = np.maximum(0.0, cash_val - cash_reserve_t)
+        paid_from_bank = np.where(active, np.minimum(tot_exp_t, bank_avail_for_exp), 0.0)
+        bank_paid_expenses_nominal[:, t] = paid_from_bank
+        cash_val = np.where(active, cash_val - paid_from_bank, cash_val)
+        net_need = np.where(active, np.maximum(0.0, tot_exp_t - paid_from_bank), 0.0)
+
+        # Ongoing SIP Contributions: funded strictly from remaining Bank cash above reserve (never redeem for SIP)
         if t < sip_duration_years and (equity_sip_annual + fixed_income_sip_annual) > 0:
             sched_eq_sip = equity_sip_annual * ((1.0 + equity_sip_stepup_rate) ** t) if equity_sip_annual > 0 else 0.0
             sched_fi_sip = fixed_income_sip_annual * ((1.0 + fixed_income_sip_stepup_rate) ** t) if fixed_income_sip_annual > 0 else 0.0
             sched_sip_total = sched_eq_sip + sched_fi_sip
-            has_room_for_sip = active & (tot_inc_t > 0) & ((tot_inc_t - tot_exp_t) >= sched_sip_total)
-            eq_sip_vec = np.where(has_room_for_sip, sched_eq_sip, 0.0)
-            fi_sip_vec = np.where(has_room_for_sip, sched_fi_sip, 0.0)
+            bank_avail_for_sip = np.maximum(0.0, cash_val - cash_reserve_t)
+            sip_affordable = np.where(
+                active & (tot_inc_t > 0) & (net_need <= 1e-6),
+                np.minimum(sched_sip_total, bank_avail_for_sip),
+                0.0,
+            )
+            eq_sip_ratio = sched_eq_sip / max(1e-9, sched_sip_total)
+            eq_sip_vec = sip_affordable * eq_sip_ratio
+            fi_sip_vec = sip_affordable - eq_sip_vec
+            cash_val = np.where(active, cash_val - sip_affordable, cash_val)
             eq_val += eq_sip_vec
             fi_val += fi_sip_vec
-            sip_total_t: float | np.ndarray = eq_sip_vec + fi_sip_vec
-            total_sip_series[:, t] = sip_total_t
+            eq_sip_series[:, t] = eq_sip_vec
+            fi_sip_series[:, t] = fi_sip_vec
+            total_sip_series[:, t] = sip_affordable
         else:
-            sip_total_t = 0.0
-
-        # Realistic Cashflow Accounting:
-        # Both total expenses (tot_exp_t) and any executed SIP contributions (sip_total_t) are offset against income
-        outflow_for_income_offset = tot_exp_t + sip_total_t
-        net_need = np.maximum(0.0, outflow_for_income_offset - tot_inc_t)
-
-        surplus_income = np.maximum(0.0, tot_inc_t - outflow_for_income_offset)
-        if np.any(active & (surplus_income > 0)):
-            fi_val = np.where(active, fi_val + surplus_income, fi_val)
+            total_sip_series[:, t] = 0.0
 
         # 5. Check Property Fallback Liquidation if financial assets cannot cover net_need
         max_net_from_fin = fi_val * (1.0 - tau_fi) + eq_val * (1.0 - tau_eq)
@@ -466,6 +501,7 @@ def simulate_portfolio_paths(
             need_liq = active & (max_net_from_fin < net_need) & (prop_val > 0) & (~prop_liquidated)
             if np.any(need_liq):
                 realized_prop = prop_val[need_liq] * (1.0 - property_liquidation_haircut)
+                property_liquidated_series[need_liq, t] = realized_prop
                 eq_val[need_liq] += realized_prop * target_eq_fin_ratio
                 fi_val[need_liq] += realized_prop * target_fi_fin_ratio
                 prop_val[need_liq] = 0.0
@@ -524,20 +560,8 @@ def simulate_portfolio_paths(
             withdrawn_eq_gross[still_active, t] = gross_eq
             withdrawal_tax_paid[still_active, t] = gross_fi * tau_fi + gross_eq * tau_eq
 
-        # 8. Apply annual market returns to remaining assets, and keep Cash Balance >= initial value (inflation-adjusted)
+        # 8. Periodic Rebalancing (every `reb_freq` years) back to initial allocation with Tax Drag
         surviving = ~depleted_mask
-        if np.any(surviving):
-            eq_val[surviving] = np.maximum(0.0, eq_val[surviving] * (1.0 + equity_returns[surviving, t]))
-            fi_val[surviving] = np.maximum(0.0, fi_val[surviving] * (1.0 + fixed_income_returns[surviving, t]))
-        cash_floor_next = initial_cash_inr * cumulative_cpi[:, t + 1]
-        cash_val = np.maximum(cash_val * (1.0 + np.maximum(0.0, inflation_rates[:, t])), cash_floor_next)
-        cash_balance_nominal[:, t + 1] = cash_val
-
-        has_prop = prop_val > 0
-        if np.any(has_prop):
-            prop_val[has_prop] = np.maximum(0.0, prop_val[has_prop] * (1.0 + property_returns[has_prop, t]))
-
-        # 9. Periodic Rebalancing (every `reb_freq` years) back to initial allocation with Tax Drag
         is_rebalance_year = rebalance_annually and ((t + 1) % reb_freq == 0)
         if is_rebalance_year and np.any(surviving) and fin_total_w > 1e-9:
             r_eq = target_eq_fin_ratio
@@ -579,10 +603,35 @@ def simulate_portfolio_paths(
             rebalance_sold_gross[surviving, t] = sold_arr
             rebalance_tax_paid[surviving, t] = tax_arr
 
+        # 9. Capital Gains calculated on top of whatever is left after Inflows, Outflows, and Tax Drag
+        eq_before_ret = eq_val.copy()
+        fi_before_ret = fi_val.copy()
+        cash_before_ret = cash_val.copy()
+        liquid_before_ret = eq_before_ret + fi_before_ret + cash_before_ret
+        liquid_before_returns_nominal[:, t] = liquid_before_ret
+        if np.any(surviving):
+            eq_val[surviving] = np.maximum(0.0, eq_val[surviving] * (1.0 + equity_returns[surviving, t]))
+            fi_val[surviving] = np.maximum(0.0, fi_val[surviving] * (1.0 + fixed_income_returns[surviving, t]))
+        cash_floor_next = initial_cash_inr * cumulative_cpi[:, t + 1]
+        cash_val = np.maximum(cash_val * (1.0 + np.maximum(0.0, inflation_rates[:, t])), cash_floor_next)
+        cash_balance_nominal[:, t + 1] = cash_val
+        eq_balance_nominal[:, t + 1] = eq_val
+        fi_balance_nominal[:, t + 1] = fi_val
+        eq_cap_gains_nominal[:, t] = eq_val - eq_before_ret
+        fi_cap_gains_nominal[:, t] = fi_val - fi_before_ret
+        cash_cap_gains_nominal[:, t] = cash_val - cash_before_ret
+        capital_gains_nominal[:, t] = (eq_val + fi_val + cash_val) - liquid_before_ret
+
+        has_prop = prop_val > 0
+        if np.any(has_prop):
+            prop_val[has_prop] = np.maximum(0.0, prop_val[has_prop] * (1.0 + property_returns[has_prop, t]))
+
         drawable_nominal[:, t + 1] = _get_drawable(eq_val, fi_val, prop_val)
+        liquid_corpus_nominal[:, t + 1] = eq_val + fi_val + cash_val
         net_worth_nominal[:, t + 1] = eq_val + fi_val + cash_val + prop_val
 
     drawable_real = drawable_nominal / cumulative_cpi
+    liquid_corpus_real = liquid_corpus_nominal / cumulative_cpi
     net_worth_real = net_worth_nominal / cumulative_cpi
     cash_balance_real = cash_balance_nominal / cumulative_cpi
     expenses_real = total_expenses_nominal / cumulative_cpi[:, :-1]
@@ -592,10 +641,20 @@ def simulate_portfolio_paths(
         "depleted_mask": depleted_mask,
         "drawable_nominal": drawable_nominal,
         "drawable_real": drawable_real,
+        "liquid_corpus_nominal": liquid_corpus_nominal,
+        "liquid_corpus_real": liquid_corpus_real,
         "net_worth_nominal": net_worth_nominal,
         "net_worth_real": net_worth_real,
         "cash_balance_nominal": cash_balance_nominal,
         "cash_balance_real": cash_balance_real,
+        "eq_balance_nominal": eq_balance_nominal,
+        "fi_balance_nominal": fi_balance_nominal,
+        "bank_paid_expenses_nominal": bank_paid_expenses_nominal,
+        "cash_reserve_floor_nominal": cash_reserve_floor_nominal,
+        "liquid_before_returns_nominal": liquid_before_returns_nominal,
+        "eq_cap_gains_nominal": eq_cap_gains_nominal,
+        "fi_cap_gains_nominal": fi_cap_gains_nominal,
+        "cash_cap_gains_nominal": cash_cap_gains_nominal,
         "base_expenses_nominal": base_expenses_nominal,
         "expenses_nominal": total_expenses_nominal,
         "expenses_real": expenses_real,
@@ -604,9 +663,15 @@ def simulate_portfolio_paths(
         "known_event_nominal": known_event_nominal,
         "known_expense_incurred": known_event_nominal,
         "known_tags_by_year": known_tags_by_year,
+        "job_income_nominal": job_income_series,
         "rental_income_nominal": rental_income_series,
+        "passive_income_nominal": passive_income_series,
         "total_income_nominal": total_income_series,
+        "eq_sip_nominal": eq_sip_series,
+        "fi_sip_nominal": fi_sip_series,
         "total_sip_nominal": total_sip_series,
+        "capital_gains_nominal": capital_gains_nominal,
+        "property_liquidated_nominal": property_liquidated_series,
         "withdrawn_fi_gross": withdrawn_fi_gross,
         "withdrawn_from_fi_gross": withdrawn_fi_gross,
         "withdrawn_eq_gross": withdrawn_eq_gross,
