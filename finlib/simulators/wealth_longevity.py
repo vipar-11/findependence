@@ -97,6 +97,7 @@ class WealthLongevitySimulator(BaseSimulator):
             "rebalance_annually": True,
             "rebalance_frequency_years": 2,
             "tax_drag_rate": 10.0,
+            "target_success_rate_pct": TARGET_RETIREMENT_SUCCESS_RATE_PCT,
             "fixed_income_tax_rate": None,
             "equity_tax_rate": None,
             "home_improvement_enabled": False,
@@ -120,6 +121,7 @@ class WealthLongevitySimulator(BaseSimulator):
 
         current_age = int(cfg["current_age"])
         life_expectancy = int(cfg["life_expectancy"])
+        target_success_rate_pct = float(cfg.get("target_success_rate_pct") or TARGET_RETIREMENT_SUCCESS_RATE_PCT)
         has_medical_insurance = bool(cfg.get("has_medical_insurance", True))
         target_horizon = max(5, life_expectancy - current_age)
         max_sim_horizon = max(target_horizon + 10, 100 - current_age)
@@ -359,7 +361,7 @@ class WealthLongevitySimulator(BaseSimulator):
             if r == 0:
                 retire_today_success_pct = sr_pct
 
-            meets_target = sr_pct >= TARGET_RETIREMENT_SUCCESS_RATE_PCT
+            meets_target = sr_pct >= target_success_rate_pct
             if meets_target and best_r is None:
                 best_r = r
                 best_mc_out = step_out
@@ -580,6 +582,7 @@ class WealthLongevitySimulator(BaseSimulator):
                 max_search_years=max_search_years,
                 retire_today_success_pct=retire_today_success_pct,
                 selected_r=r_offset,
+                target_success_rate_pct=target_success_rate_pct,
             )
 
         verdict = outcomes_by_age[str(chosen_age)]["verdict"]
@@ -598,7 +601,7 @@ class WealthLongevitySimulator(BaseSimulator):
         )
 
         retirement_readiness = {
-            "target_success_rate_pct": TARGET_RETIREMENT_SUCCESS_RATE_PCT,
+            "target_success_rate_pct": target_success_rate_pct,
             "can_retire_at_age": (current_age + best_r) if best_r is not None else None,
             "years_until_retirement": best_r,
             "recommended_retirement_age": chosen_age,
@@ -883,11 +886,11 @@ class WealthLongevitySimulator(BaseSimulator):
         sort_order = np.lexsort((ending_real, years_lasted))
 
         percentile_targets = [
-            ("p50", "P50 — Median Case (Typical Market)", int(0.50 * (n_sims - 1))),
-            ("p10", "P10 — Worst Case", int(0.10 * (n_sims - 1))),
-            ("p25", "P25 — Cautious Case", int(0.25 * (n_sims - 1))),
-            ("p75", "P75 — Favorable Market Case", int(0.75 * (n_sims - 1))),
-            ("p90", "P90 — Strong Market Case", int(0.90 * (n_sims - 1))),
+            ("p50", "Most Likely (Typical Market)", int(0.50 * (n_sims - 1))),
+            ("p10", "Worst Case (Market Downturn)", int(0.10 * (n_sims - 1))),
+            ("p25", "Cautious Case", int(0.25 * (n_sims - 1))),
+            ("p75", "Favorable Market Case", int(0.75 * (n_sims - 1))),
+            ("p90", "Strong Market Case", int(0.90 * (n_sims - 1))),
             ("random1", "Random Sample Path #1", 0),
         ]
 
@@ -1147,6 +1150,7 @@ class WealthLongevitySimulator(BaseSimulator):
         max_search_years: int = 0,
         retire_today_success_pct: float | None = None,
         selected_r: int | None = None,
+        target_success_rate_pct: float = TARGET_RETIREMENT_SUCCESS_RATE_PCT,
     ) -> dict[str, Any]:
         success_pct = longevity_stats["success_probability_pct"]
         p10_yrs = longevity_stats["percentiles_years"]["p10"]
@@ -1154,19 +1158,24 @@ class WealthLongevitySimulator(BaseSimulator):
         p10_age = longevity_stats["depletion_ages"]["p10"]
         p50_age = longevity_stats["depletion_ages"]["p50"]
 
-        yy_age_ge_sim_horizon = p50_yrs >= max_sim_horizon - 0.5
+        yy_age_gt_life_expectancy = p50_age > life_expectancy
         yy_age = (
             f"{life_expectancy}+"
-            if yy_age_ge_sim_horizon
+            if yy_age_gt_life_expectancy
             else f"{p50_age:.0f}"
         )
 
-        zz_age_ge_sim_horizon = p10_yrs >= max_sim_horizon - 0.5
+        zz_age_gt_life_expectancy = p10_age > life_expectancy
         zz_age = (
             f"{life_expectancy}+"
-            if zz_age_ge_sim_horizon
+            if zz_age_gt_life_expectancy
             else f"{p10_age:.0f}"
         )
+
+        if yy_age.endswith('+') and not zz_age.endswith('+'):
+            if yy_age[:-1] == zz_age:
+                zz_age = yy_age
+
         median_label = f"past Age {life_expectancy}+" if p50_yrs >= max_sim_horizon - 0.5 else f"until Age {p50_age:.0f}"
 
         eval_r = selected_r if selected_r is not None else (best_r if best_r is not None else max_search_years)
@@ -1175,15 +1184,15 @@ class WealthLongevitySimulator(BaseSimulator):
         # 6-Scenario Structured Financial Outlook Verdict
         if max_search_years <= 0:
             # Already retired (no active job / business income)
-            if success_pct >= TARGET_RETIREMENT_SUCCESS_RATE_PCT:
+            if success_pct >= target_success_rate_pct:
                 # Scenario 1: Already retired, has enough wealth
                 status = "strong"
                 badge = "Strong"
                 headline = "Your retirement is well-funded"
                 recommendation = (
-                    f"Projected to last to comfortably beyond age {zz_age}."
-                ) if zz_age_ge_sim_horizon else (
-                    f"Projected to last to between age {zz_age} and {yy_age}."                    
+                    f"Projected to last comfortably beyond age {zz_age}."
+                ) if zz_age == yy_age else (
+                    f"Projected to last between age {zz_age} and {yy_age}."                    
                 )
             else:
                 # Scenario 6: Retired, wealth not likely to last
@@ -1191,9 +1200,11 @@ class WealthLongevitySimulator(BaseSimulator):
                 badge = "Action Required"
                 headline = "Your corpus faces an early depletion risk"
                 recommendation = (
+                    f"Funds are projected to run out by age {zz_age}."
+                ) if zz_age == yy_age else (
                     f"Funds are projected to run out between age {zz_age} and {yy_age}."
                 )
-        elif success_pct >= TARGET_RETIREMENT_SUCCESS_RATE_PCT:
+        elif success_pct >= target_success_rate_pct:
             # Working, meets target at evaluated retirement age
             if eval_r == 0:
                 # Scenario 2: Working, can retire immediately
@@ -1202,7 +1213,7 @@ class WealthLongevitySimulator(BaseSimulator):
                 headline = "You have enough to retire today"
                 recommendation = (
                     f"Your corpus can comfortably sustain your lifestyle beyond age {zz_age}."
-                ) if zz_age_ge_sim_horizon else (
+                ) if zz_age == yy_age else (
                     f"Your corpus can sustain your lifestyle between age {zz_age} and {yy_age}."
                 )
             elif eval_r < max_search_years:
@@ -1213,7 +1224,9 @@ class WealthLongevitySimulator(BaseSimulator):
                 badge = "Ahead of Plan"
                 headline = f"You can retire {years_from_now} {yr_word} from now, at age {eval_age}"
                 recommendation = (
-                    f"Even if you stop working at {eval_age}, your wealth lasts until between age {zz_age} and {yy_age}."
+                    f"Even if you stop working at {eval_age}, your wealth lasts until age {zz_age}."
+                ) if zz_age == yy_age else(
+                    f"Even if you stop working at {eval_age}, your wealth lasts until age {zz_age} - {yy_age}."
                 )
             else:
                 # Scenario 4: Working, on track for planned retirement
@@ -1221,7 +1234,9 @@ class WealthLongevitySimulator(BaseSimulator):
                 badge = "On Track"
                 headline = f"Stay the course until age {eval_age}"
                 recommendation = (
-                    f"Retiring at your {eval_age} keeps you funded until between age {zz_age} and {yy_age}."
+                    f"Retiring at {eval_age} keeps you funded until age {zz_age}."
+                ) if zz_age ==yy_age else (
+                    f"Retiring at {eval_age} keeps you funded until age {zz_age} - {yy_age}."
                 )
         else:
             # Scenario 5: Working, shortfall at evaluated / planned retirement
@@ -1229,7 +1244,9 @@ class WealthLongevitySimulator(BaseSimulator):
             badge = "Needs Attention"
             headline = f"Projected shortfall"
             recommendation = (
-                f"At your current pace, funds may deplete between age {zz_age} and {yy_age}."
+                f"At your current pace, funds may deplete by age {zz_age}."
+            ) if zz_age == yy_age else (
+                 f"At your current pace, funds may deplete between age {zz_age} and {yy_age}."
             )
 
         return {
@@ -1237,6 +1254,8 @@ class WealthLongevitySimulator(BaseSimulator):
             "badge": badge,
             "headline": headline,
             "recommendation": recommendation,
+            "yy_age": yy_age,
+            "zz_age": zz_age,
             "median_longevity_label": median_label,
             "recommended_retirement_age": (current_age + best_r) if best_r is not None else None,
             "years_until_retirement": best_r,

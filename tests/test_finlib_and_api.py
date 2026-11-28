@@ -803,36 +803,64 @@ def test_finance_and_simulator_verdict_branches() -> None:
         required_drawable_corpus=4_00_00_000.0,
         initial_drawable_corpus=3_00_00_000.0,
     )
-    # 1. Already retired, has enough wealth
+    stats_both_beyond = {
+        "success_probability_pct": 98.0,
+        "percentiles_years": {"p10": 50.0, "p50": 55.0},
+        "depletion_ages": {"p10": 90.0, "p50": 95.0},
+    }
+    stats_same_shortfall = {
+        "success_probability_pct": 10.0,
+        "percentiles_years": {"p10": 20.0, "p50": 20.0},
+        "depletion_ages": {"p10": 60.0, "p50": 60.0},
+    }
+    # 1. Already retired, has enough wealth (range + beyond life_expectancy)
     v1 = sim._build_verdict(longevity_stats=stats_strong, max_search_years=0, **common_v)
     assert v1["status"] == "strong" and v1["badge"] == "Strong"
     assert v1["headline"] == "Your retirement is well-funded"
-    assert "stress-tested" in v1["recommendation"]
+    assert v1["yy_age"] == "85+" and v1["zz_age"] == "75"
+    assert "between age 75 and 85+" in v1["recommendation"]
+    v1_eq = sim._build_verdict(longevity_stats=stats_both_beyond, max_search_years=0, **common_v)
+    assert "beyond age 85+" in v1_eq["recommendation"]
 
     # 2. Working, can retire immediately
     v2 = sim._build_verdict(longevity_stats=stats_strong, max_search_years=5, best_r=0, selected_r=0, **common_v)
     assert v2["status"] == "financial_freedom" and v2["badge"] == "Financial Freedom"
     assert v2["headline"] == "You have enough to retire today"
+    assert "between age 75 and 85+" in v2["recommendation"]
+    v2_eq = sim._build_verdict(longevity_stats=stats_both_beyond, max_search_years=5, best_r=0, selected_r=0, **common_v)
+    assert "beyond age 85+" in v2_eq["recommendation"]
 
     # 3. Working, can retire early
     v3 = sim._build_verdict(longevity_stats=stats_strong, max_search_years=5, best_r=2, selected_r=2, **common_v)
     assert v3["status"] == "ahead_of_plan" and v3["badge"] == "Ahead of Plan"
-    assert v3["headline"] == "You can retire 3 years early, at age 42"
+    assert v3["headline"] == "You can retire 2 years from now, at age 42"
+    assert "until age 75 - 85+" in v3["recommendation"]
+    v3_eq = sim._build_verdict(longevity_stats=stats_both_beyond, max_search_years=5, best_r=2, selected_r=2, **common_v)
+    assert "until age 85+" in v3_eq["recommendation"]
 
     # 4. Working, on track for planned retirement
     v4 = sim._build_verdict(longevity_stats=stats_strong, max_search_years=5, best_r=5, selected_r=5, **common_v)
     assert v4["status"] == "on_track" and v4["badge"] == "On Track"
     assert v4["headline"] == "Stay the course until age 45"
+    assert "until age 75 - 85+" in v4["recommendation"]
+    v4_eq = sim._build_verdict(longevity_stats=stats_both_beyond, max_search_years=5, best_r=5, selected_r=5, **common_v)
+    assert "until age 85+." in v4_eq["recommendation"]
 
     # 5. Working, shortfall at planned retirement
     v5 = sim._build_verdict(longevity_stats=stats_shortfall, max_search_years=5, best_r=None, selected_r=5, **common_v)
     assert v5["status"] == "needs_attention" and v5["badge"] == "Needs Attention"
-    assert v5["headline"] == "Projected shortfall at age 45"
+    assert v5["headline"] == "Projected shortfall"
+    assert "between age 55 and 72" in v5["recommendation"]
+    v5_eq = sim._build_verdict(longevity_stats=stats_same_shortfall, max_search_years=5, best_r=None, selected_r=5, **common_v)
+    assert "by age 60." in v5_eq["recommendation"]
 
     # 6. Retired, wealth not likely to last
     v6 = sim._build_verdict(longevity_stats=stats_shortfall, max_search_years=0, **common_v)
     assert v6["status"] == "action_required" and v6["badge"] == "Action Required"
     assert v6["headline"] == "Your corpus faces an early depletion risk"
+    assert "between age 55 and 72" in v6["recommendation"]
+    v6_eq = sim._build_verdict(longevity_stats=stats_same_shortfall, max_search_years=0, **common_v)
+    assert "by age 60." in v6_eq["recommendation"]
 
     # Chart event annotations fallback when notable_runs is empty
     ann = sim._build_chart_event_annotations(

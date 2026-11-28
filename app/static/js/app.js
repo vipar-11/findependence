@@ -48,6 +48,7 @@ const state = {
 
   // Configuration Settings (Prefilled)
   life_expectancy: 90,
+  target_success_rate_pct: 85,
   lifestyle_inflation_rate: 0.5,
   tax_drag_rate: 10.0,
   global_variance_pct: 10.0,
@@ -1021,6 +1022,12 @@ function updateAdvSettings() {
   if (taxSlider) {
     state.tax_drag_rate = parseFloat(taxSlider.value) || 10.0;
   }
+  const targetSrSlider = document.getElementById('targetSuccessRateSlider');
+  if (targetSrSlider) {
+    state.target_success_rate_pct = Math.max(50, Math.min(99, parseFloat(targetSrSlider.value) || 85));
+  }
+  const targetSrValEl = document.getElementById('targetSuccessRateValText');
+  if (targetSrValEl) targetSrValEl.textContent = state.target_success_rate_pct;
   const globalVarSlider = document.getElementById('globalVarianceSlider');
   if (globalVarSlider && globalVarSlider.value !== '') {
     state.global_variance_pct = Math.max(0, Math.min(100, parseFloat(globalVarSlider.value) || 0));
@@ -1097,6 +1104,7 @@ function resetAdvSettings() {
   setVal('passiveInfFreqSlider', '3');
   setVal('lifeInfSlider', '0.5');
   setVal('targetAgeSlider', String(defaultTargetAge));
+  setVal('targetSuccessRateSlider', '85');
   const randChk = document.getElementById('randExpEnabledChk');
   if (randChk) randChk.checked = true;
   setVal('randExpBaseLakhsInput', state.has_medical_insurance === false ? '5.0' : '2.0');
@@ -1158,6 +1166,7 @@ async function triggerSimulationRun() {
   const payload = {
     current_age: effectiveAge,
     life_expectancy: Math.max(effectiveAge + 5, state.life_expectancy),
+    target_success_rate_pct: state.target_success_rate_pct,
     has_medical_insurance: effectiveMedIns,
     equity_value: eqVal,
     fixed_income_value: fiVal,
@@ -1264,13 +1273,6 @@ function renderSimulationResults(data) {
   scrollToPageTop();
 }
 
-function selectCandidateRetirementAge(age) {
-  const numericAge = parseInt(age, 10);
-  if (isNaN(numericAge) || !state.result) return;
-  state.selected_retirement_age = numericAge;
-  applyOutcomeViewForAge(numericAge);
-}
-
 function applyOutcomeViewForAge(age) {
   const data = state.result;
   if (!data) return;
@@ -1310,135 +1312,68 @@ function applyOutcomeViewForAge(age) {
   };
   badge.className = `px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${badgeStyle[verdict.status] || badgeStyle.borderline}`;
 
-  const hasMultiAges =
-    retirement_readiness &&
-    Array.isArray(retirement_readiness.candidate_retirement_ages) &&
-    retirement_readiness.candidate_retirement_ages.length > 1;
-  document.getElementById('resSimCountLabel').textContent = hasMultiAges
-    ? `Success Rate at Age ${age}: ${longevity_stats.success_probability_pct}% (Target: 85%)`
-    : `Success Rate: ${longevity_stats.success_probability_pct}% (Target: 85%)`;
+  // Single Crisp Outcome Card + Status-Synced Chance Label (Consistent with Badge Color)
+  const lifeExp = inputs_summary.life_expectancy;
+  const cardTheme = {
+    strong: { box: 'bg-emerald-500/15 border-2 border-emerald-500/50', label: 'text-emerald-300' },
+    financial_freedom: { box: 'bg-emerald-500/15 border-2 border-emerald-500/50', label: 'text-emerald-300' },
+    ahead_of_plan: { box: 'bg-emerald-500/15 border-2 border-emerald-500/50', label: 'text-emerald-300' },
+    retire_ready: { box: 'bg-emerald-500/15 border-2 border-emerald-500/50', label: 'text-emerald-300' },
+    on_track: { box: 'bg-sky-500/20 border-2 border-emerald-500/50', label: 'text-teal-300' },
+    needs_attention: { box: 'bg-amber-500/15 border-2 border-amber-500/40', label: 'text-amber-300' },
+    borderline: { box: 'bg-amber-500/15 border-2 border-amber-500/40', label: 'text-amber-300' },
+    action_required: { box: 'bg-rose-950/30 border-2 border-rose-500/40', label: 'text-rose-300' },
+    shortfall: { box: 'bg-rose-950/30 border-2 border-rose-500/40', label: 'text-rose-300' },
+    at_risk: { box: 'bg-rose-950/30 border-2 border-rose-500/40', label: 'text-rose-300' },
+  };
+  const theme = cardTheme[verdict.status] || cardTheme.borderline;
+
+  const simCountEl = document.getElementById('resSimCountLabel');
+  if (simCountEl) {
+    simCountEl.textContent = `${longevity_stats.success_probability_pct}% chance your wealth lasts to age ${lifeExp}`;
+    simCountEl.className = `text-xs font-extrabold ${theme.label}`;
+  }
   document.getElementById('resHeadline').textContent = verdict.headline;
   document.getElementById('resRecommendation').textContent = verdict.recommendation;
 
-  // Render Year-by-Year Retirement Age Finder Bar Chart
-  renderRetirementAgeProgression(retirement_readiness);
+  const resolveVerdictAge = (k, rawAge) => {
+    const verdictAge = k === 'p50' ? verdict.yy_age : verdict.zz_age;
+    if (verdictAge !== undefined && verdictAge !== null && String(verdictAge).trim() !== '') {
+      return String(verdictAge);
+    }
+    return rawAge > lifeExp ? `${lifeExp}+` : String(Math.round(rawAge));
+  };
 
-  // Outcome Cards: MEDIAN CASE First, WORST CASE Second — Focus on Future Age ("Lasts past 90+", "Lasts until 78")
-  const fmtAgePrimary = (y, a) =>
-    y >= maxSimYrs - 0.5 ? `Lasts past ${inputs_summary.life_expectancy}+` : `Lasts until ${Math.round(a)}`;
-  const fmtAgeSub = (y, a) =>
-    y >= maxSimYrs - 0.5 ? `Sustains past Age ${inputs_summary.life_expectancy}` : `Funds run out at Age ${Math.round(a)}`;
+  const yyAge = resolveVerdictAge('p50', longevity_stats.depletion_ages.p50);
+  const zzAge = resolveVerdictAge('p10', longevity_stats.depletion_ages.p10);
 
-  ['p50', 'p10'].forEach((k) => {
-    const yrs = longevity_stats.percentiles_years[k];
-    const ageVal = longevity_stats.depletion_ages[k];
-    const upper = k.toUpperCase();
-    const ageEl = document.getElementById(`card${upper}Age`);
-    const yrsEl = document.getElementById(`card${upper}Yrs`);
-    if (ageEl) ageEl.textContent = fmtAgePrimary(yrs, ageVal);
-    if (yrsEl) yrsEl.textContent = fmtAgeSub(yrs, ageVal);
-  });
+  const lonCard = document.getElementById('wealthLongevityCard');
+  const lonLabel = document.getElementById('cardLongevityLabel');
+  const lonAge = document.getElementById('cardLongevityAge');
+  const lonSub = document.getElementById('cardLongevitySub');
 
-  // Render Wealth Trajectory Chart & Year-by-Year Table for the selected retirement age
+  if (lonCard) {
+    lonCard.className = `${theme.box} rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left`;
+  }
+  if (lonLabel) {
+    lonLabel.className = `text-[11px] font-bold uppercase tracking-wider ${theme.label} block`;
+  }
+  if (lonAge) {
+    lonAge.textContent = zzAge === yyAge ? `Age ${zzAge}` : `Age ${zzAge} – ${yyAge}`;
+  }
+  if (lonSub) {
+    if (zzAge === yyAge && zzAge.endsWith('+')) {
+      lonSub.textContent = 'Sustains past your plan horizon even in a downturn';
+    } else if (zzAge === yyAge) {
+      lonSub.textContent = '';
+    } else {
+      lonSub.textContent = '';
+    }
+  }
+
+  // Render Wealth Trajectory Chart & Year-by-Year Table
   renderSpaghettiAndPercentileChart();
   populateNotableRunsDropdown(data);
-}
-
-function renderRetirementAgeProgression(readiness) {
-  const box = document.getElementById('retirementAgeProgressionBox');
-  if (!box) return;
-
-  if (!readiness || !Array.isArray(readiness.candidate_retirement_ages) || readiness.candidate_retirement_ages.length <= 1) {
-    box.classList.add('hidden');
-    return;
-  }
-
-  box.classList.remove('hidden');
-  const candidates = readiness.candidate_retirement_ages;
-  const bestAge = readiness.can_retire_at_age;
-  const fallbackAge = readiness.evaluated_retirement_age || candidates[candidates.length - 1].retirement_age;
-  const recommendedAge = bestAge !== null && bestAge !== undefined ? bestAge : fallbackAge;
-  const selectedAge = state.selected_retirement_age !== null ? state.selected_retirement_age : recommendedAge;
-
-  const recBadge = document.getElementById('recommendedRetireAgeBadge');
-  if (recBadge) {
-    const recItem = candidates.find((c) => c.retirement_age === recommendedAge) || candidates[candidates.length - 1];
-    if (bestAge !== null && bestAge !== undefined) {
-      const yrText = recItem.retire_in_years === 0 ? 'Retire Today' : `in ${recItem.retire_in_years} yr${recItem.retire_in_years > 1 ? 's' : ''}`;
-      recBadge.textContent = `★ Recommended: Age ${recommendedAge} (${yrText} • ${recItem.success_rate_pct}% Success)`;
-      recBadge.className = 'px-3 py-1 rounded-xl text-xs font-extrabold bg-emerald-500/20 border border-emerald-500/50 text-emerald-300';
-    } else {
-      recBadge.textContent = `Best Within Horizon: Age ${recommendedAge} (${recItem.success_rate_pct}% Success — Below 85%)`;
-      recBadge.className = 'px-3 py-1 rounded-xl text-xs font-extrabold bg-amber-500/20 border border-amber-500/50 text-amber-300';
-    }
-  }
-
-  const selLabel = document.getElementById('selectedRetirementAgeLabel');
-  if (selLabel) {
-    if (selectedAge === recommendedAge) {
-      selLabel.textContent = `Viewing: Age ${selectedAge} (Recommended)`;
-    } else if (selectedAge < recommendedAge) {
-      const diff = recommendedAge - selectedAge;
-      selLabel.textContent = `Viewing: Age ${selectedAge} (${diff} yr${diff > 1 ? 's' : ''} earlier)`;
-    } else {
-      const diff = selectedAge - recommendedAge;
-      selLabel.textContent = `Viewing: Age ${selectedAge} (+${diff} yr${diff > 1 ? 's' : ''} later)`;
-    }
-  }
-
-  const picker = document.getElementById('retireAgePicker');
-  if (picker) {
-    picker.innerHTML = candidates
-      .map((c) => {
-        const star = c.retirement_age === bestAge ? ' ★ Recommended' : '';
-        return `<option value="${c.retirement_age}" ${c.retirement_age === selectedAge ? 'selected' : ''}>Age ${c.retirement_age} — ${c.success_rate_pct}% success${star}</option>`;
-      })
-      .join('');
-    picker.value = String(selectedAge);
-  }
-
-  const selectedIdx = candidates.findIndex((c) => c.retirement_age === selectedAge);
-  const minusBtn = document.getElementById('btnRetireAgeMinus');
-  const plusBtn = document.getElementById('btnRetireAgePlus');
-  if (minusBtn) minusBtn.disabled = selectedIdx <= 0;
-  if (plusBtn) plusBtn.disabled = selectedIdx < 0 || selectedIdx >= candidates.length - 1;
-
-  const resetBtn = document.getElementById('btnResetToRecommendedAge');
-  if (resetBtn) {
-    if (selectedAge !== recommendedAge) {
-      resetBtn.classList.remove('hidden');
-      resetBtn.textContent = `↺ Back to Recommended (Age ${recommendedAge})`;
-    } else {
-      resetBtn.classList.add('hidden');
-    }
-  }
-}
-
-function stepCandidateRetirementAge(delta) {
-  const readiness = state.result && state.result.retirement_readiness;
-  if (!readiness || !Array.isArray(readiness.candidate_retirement_ages) || readiness.candidate_retirement_ages.length <= 1) {
-    return;
-  }
-  const candidates = readiness.candidate_retirement_ages;
-  const curAge =
-    state.selected_retirement_age !== null
-      ? state.selected_retirement_age
-      : readiness.evaluated_retirement_age;
-  const curIdx = candidates.findIndex((c) => c.retirement_age === curAge);
-  const nextIdx = Math.max(0, Math.min(candidates.length - 1, (curIdx >= 0 ? curIdx : 0) + delta));
-  selectCandidateRetirementAge(candidates[nextIdx].retirement_age);
-}
-
-function resetToRecommendedRetirementAge() {
-  const readiness = state.result && state.result.retirement_readiness;
-  if (!readiness) return;
-  const recAge =
-    readiness.can_retire_at_age !== null && readiness.can_retire_at_age !== undefined
-      ? readiness.can_retire_at_age
-      : readiness.evaluated_retirement_age;
-  if (recAge !== null && recAge !== undefined) {
-    selectCandidateRetirementAge(recAge);
-  }
 }
 
 function setCurveFocus(mode) {
@@ -1470,7 +1405,7 @@ function switchChartScale(scale) {
   renderSpaghettiAndPercentileChart();
 }
 
-// ==================== CHART 1: MEDIAN CASE vs WORST CASE WITH SEPARATE TOOLTIPS ====================
+// ==================== CHART 1: MOST LIKELY vs WORST CASE WITH SEPARATE TOOLTIPS ====================
 function renderSpaghettiAndPercentileChart() {
   const data = state.result;
   if (!data) return;
@@ -1520,7 +1455,7 @@ function renderSpaghettiAndPercentileChart() {
 
   const datasets = [
     {
-      label: 'Median Case (Typical Market)',
+      label: 'Most Likely (Typical Market)',
       caseKey: 'p50',
       data: p50Slice,
       hidden: !showP50,
@@ -1603,7 +1538,7 @@ function renderSpaghettiAndPercentileChart() {
               const age = agesSlice[dataIdx];
               const isP10 = activeItem.dataset && activeItem.dataset.caseKey === 'p10';
               const evMap = isP10 ? eventsByAgeP10 : eventsByAgeP50;
-              const caseTitle = isP10 ? 'Worst Case' : 'Median Case';
+              const caseTitle = isP10 ? 'Worst Case' : 'Most Likely';
               const evList = evMap[String(age)] || [];
               if (!evList.length) return [];
               return ['', `${caseTitle} Events at Age ${age}:`, ...evList.map((e) => `  • ${e}`)];
@@ -1642,7 +1577,17 @@ function populateNotableRunsDropdown(data) {
 
   const filtered = runs
     .map((r, idx) => ({ r, idx }))
-    .filter(({ r }) => r.label.startsWith('P50') || r.label.startsWith('P10') || r.label.startsWith('Random'));
+    .filter(
+      ({ r }) =>
+        r.case_key === 'p50' ||
+        r.case_key === 'p10' ||
+        r.case_key === 'random1' ||
+        r.label.startsWith('P50') ||
+        r.label.startsWith('P10') ||
+        r.label.startsWith('Most Likely') ||
+        r.label.startsWith('Worst Case') ||
+        r.label.startsWith('Random')
+    );
 
   select.innerHTML = filtered
     .map(({ r, idx }) => {
@@ -1650,7 +1595,8 @@ function populateNotableRunsDropdown(data) {
         r.years_lasted >= maxSimYrs - 0.5
           ? `Lasts past ${targetAge}+`
           : `Lasts until ${Math.round(curAge + r.years_lasted)}`;
-      return `<option value="${idx}" ${r.label.startsWith('P50') ? 'selected' : ''}>${r.label} (${ageLabel})</option>`;
+      const isDefault = r.case_key === 'p50' || r.label.startsWith('P50') || r.label.startsWith('Most Likely');
+      return `<option value="${idx}" ${isDefault ? 'selected' : ''}>${r.label} (${ageLabel})</option>`;
     })
     .join('');
   renderRunInspectorTable();
@@ -2346,11 +2292,7 @@ if (typeof module !== 'undefined' && module.exports) {
     resetAdvSettings,
     triggerSimulationRun,
     renderSimulationResults,
-    selectCandidateRetirementAge,
-    stepCandidateRetirementAge,
-    resetToRecommendedRetirementAge,
     applyOutcomeViewForAge,
-    renderRetirementAgeProgression,
     setCurveFocus,
     switchChartScale,
     renderSpaghettiAndPercentileChart,

@@ -34,23 +34,23 @@ function createMockCanvasContext(canvas) {
     textAlign: 'left',
     textBaseline: 'alphabetic',
     globalAlpha: 1,
-    setTransform() {},
-    translate() {},
-    rotate() {},
-    clearRect() {},
-    save() {},
-    restore() {},
-    beginPath() {},
-    closePath() {},
-    moveTo() {},
-    lineTo() {},
-    arc() {},
-    fill() {},
-    stroke() {},
-    fillText() {},
-    setLineDash() {},
-    roundRect() {},
-    rect() {},
+    setTransform() { },
+    translate() { },
+    rotate() { },
+    clearRect() { },
+    save() { },
+    restore() { },
+    beginPath() { },
+    closePath() { },
+    moveTo() { },
+    lineTo() { },
+    arc() { },
+    fill() { },
+    stroke() { },
+    fillText() { },
+    setLineDash() { },
+    roundRect() { },
+    rect() { },
     measureText(str) {
       return { width: String(str).length * 6 };
     },
@@ -226,7 +226,7 @@ let lastAlert = null;
 global.alert = (msg) => {
   lastAlert = msg;
 };
-global.console.error = () => {};
+global.console.error = () => { };
 
 let mockFetchHandler = async () => ({
   ok: true,
@@ -246,7 +246,7 @@ global.setInterval = (fn) => {
   fn();
   return 1;
 };
-global.clearInterval = () => {};
+global.clearInterval = () => { };
 
 const { LocalChart } = require('../app/static/js/chart.js');
 global.Chart = LocalChart;
@@ -843,12 +843,12 @@ async function runAllTests() {
     spChart.options.plugins.legend.onClick({}, { datasetIndex: 1 });
     spChart.options.plugins.legend.onClick({}, { datasetIndex: 0 });
 
-    // Verify separate tooltips for Median Case (P50) vs Worst Case (P10) markers
+    // Verify separate tooltips for Most Likely (P50) vs Worst Case (P10) markers
     const spTooltip = spChart.options.plugins.tooltip.callbacks;
-    assert.ok(spTooltip.label({ dataset: { label: 'Median Case' }, raw: 35000000 }).includes('₹'));
+    assert.ok(spTooltip.label({ dataset: { label: 'Most Likely' }, raw: 35000000 }).includes('₹'));
     const p50Body = spTooltip.afterBody([{ dataIndex: 5, dataset: { caseKey: 'p50' } }]);
     const p10Body = spTooltip.afterBody([{ dataIndex: 5, dataset: { caseKey: 'p10' } }]);
-    assert.ok(p50Body.some((l) => l.includes('Median Case')));
+    assert.ok(p50Body.some((l) => l.includes('Most Likely')));
     assert.ok(p10Body.some((l) => l.includes('Worst Case')));
     assert.equal(spTooltip.afterBody([]).length, 0);
 
@@ -866,24 +866,11 @@ async function runAllTests() {
     assert.ok(getElement('yearMathContent_1').innerHTML.includes('Education'));
     appModule.toggleYearMathRow(1);
 
-    // Verify Retirement Age Explorer: stepping earlier/later and resetting back to recommended age
+    // Verify single Wealth Longevity card output matches verdict ages
     assert.equal(appModule.state.selected_retirement_age, 40);
-    assert.equal(getElement('btnResetToRecommendedAge').classList.contains('hidden'), true);
-    appModule.stepCandidateRetirementAge(-1);
-    assert.equal(appModule.state.selected_retirement_age, 39);
-    assert.equal(getElement('btnResetToRecommendedAge').classList.contains('hidden'), false);
-    appModule.stepCandidateRetirementAge(-1);
-    assert.equal(appModule.state.selected_retirement_age, 38);
-    assert.equal(getElement('cardP50Age').textContent, 'Lasts until 80');
-    assert.equal(getElement('cardP10Age').textContent, 'Lasts until 58');
-
-    // Reset back to recommended Age 40
-    appModule.resetToRecommendedRetirementAge();
-    assert.equal(appModule.state.selected_retirement_age, 40);
-    assert.equal(getElement('btnResetToRecommendedAge').classList.contains('hidden'), true);
-
-    // Also test empty retirement_readiness branch
-    appModule.renderRetirementAgeProgression(null);
+    assert.equal(getElement('cardLongevityAge').textContent, 'Age 63 – 90+');
+    appModule.applyOutcomeViewForAge(38);
+    assert.equal(getElement('cardLongevityAge').textContent, 'Age 58 – 80');
 
     mockFetchHandler = async () => ({
       ok: false,
@@ -910,8 +897,8 @@ async function runAllTests() {
 
     const dropZone = getElement('dropZoneLabel');
     const dummyEvent = {
-      preventDefault() {},
-      stopPropagation() {},
+      preventDefault() { },
+      stopPropagation() { },
       dataTransfer: { files: [{ name: 'statement.csv' }] },
     };
     dropZone.dispatchEvent('dragenter', dummyEvent);

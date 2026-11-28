@@ -64,7 +64,7 @@
           Decode my financial outlook
         </h1>
         <p class="text-sm text-slate-400 mt-1.5">
-          Enter your details across 5 quick steps to see how long your wealth lasts in the median and worst case — and if you have ongoing job or business income, when you can retire with an 85% success rate.
+          Enter your details across 5 quick steps to see how long your wealth lasts in the most likely and worst case — and if you have ongoing job or business income, when you can comfortably retire.
         </p>
       </div>
 
@@ -781,6 +781,16 @@
                   <input id="targetAgeSlider" type="range" min="65" max="105" step="1" value="90" class="w-full"
                     oninput="updateAdvSettings()" />
                 </div>
+
+                <!-- Target Success Rate (Default 85%) -->
+                <div>
+                  <div class="flex justify-between text-xs mb-1">
+                    <label class="text-slate-300">Target Success Rate</label>
+                    <span class="font-bold text-emerald-300"><span id="targetSuccessRateValText">85</span>%</span>
+                  </div>
+                  <input id="targetSuccessRateSlider" type="range" min="60" max="95" step="5" value="85"
+                    class="w-full slider-emerald" oninput="updateAdvSettings()" />
+                </div>
               </div>
 
               <!-- Row 2: Unexpected Annual Shock Expense (Uses Global Variance) -->
@@ -928,78 +938,34 @@
           </p>
         </div>
 
-        <!-- Crisp 2-Column Outcome Tiles (Side-by-Side Even on Mobile) -->
-        <div class="grid grid-cols-2 gap-3">
-          <div class="bg-indigo-950/50 border-2 border-indigo-500 rounded-xl p-3.5 sm:p-4 text-center sm:text-left sm:flex items-center justify-between">
-            <div>
-              <span class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-indigo-300 block">Median Case</span>
-              <span id="cardP50Yrs" class="text-[11px] text-slate-400 hidden sm:block mt-0.5">Typical market</span>
-            </div>
-            <span id="cardP50Age" class="text-lg sm:text-2xl font-extrabold text-white block mt-1 sm:mt-0">Past --+</span>
-          </div>
-
-          <div class="bg-rose-950/30 border border-rose-500/40 rounded-xl p-3.5 sm:p-4 text-center sm:text-left sm:flex items-center justify-between">
-            <div>
-              <span class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-rose-300 block">Worst Case</span>
-              <span id="cardP10Yrs" class="text-[11px] text-slate-400 hidden sm:block mt-0.5">Severe crash</span>
-            </div>
-            <span id="cardP10Age" class="text-lg sm:text-2xl font-extrabold text-white block mt-1 sm:mt-0">Until --</span>
-          </div>
-        </div>
-
-        <!-- Interactive Retirement Age Explorer (Replaces Bar Chart: Edit Earlier or Later Age + Reset to Recommended) -->
-        <div id="retirementAgeProgressionBox" class="hidden bg-slate-950/70 border border-slate-800 rounded-xl p-3.5 sm:p-4 space-y-3">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <span class="text-xs font-bold text-white block">🎯 Explore Different Retirement Ages</span>
-              <span class="text-[11px] text-slate-400">Pick an earlier or later age to see what happens to your wealth.</span>
-            </div>
-            <span id="recommendedRetireAgeBadge"
-              class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-emerald-500/20 border border-emerald-500/50 text-emerald-300">
-              ★ Recommended: Age --
+        <!-- Single Crisp Outcome Card: Status-Colored Wealth Longevity Age / Range -->
+        <div id="wealthLongevityCard"
+          class="bg-emerald-500/15 border-2 border-emerald-500/50 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
+          <div>
+            <span id="cardLongevityLabel" class="text-[11px] font-bold uppercase tracking-wider text-emerald-300 block">
+              Projected Wealth Longevity
+            </span>
+            <span id="cardLongevitySub" class="text-xs text-slate-300 block mt-0.5">
+              Expected & stress-tested outcome
             </span>
           </div>
-
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="inline-flex items-center gap-1.5">
-              <button type="button" id="btnRetireAgeMinus" onclick="stepCandidateRetirementAge(-1)"
-                class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-extrabold text-white transition">
-                −1 yr
-              </button>
-              <select id="retireAgePicker" onchange="selectCandidateRetirementAge(this.value)"
-                class="bg-slate-900 border border-indigo-500/60 rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none">
-              </select>
-              <button type="button" id="btnRetireAgePlus" onclick="stepCandidateRetirementAge(1)"
-                class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-extrabold text-white transition">
-                +1 yr
-              </button>
-            </div>
-
-            <div class="flex items-center gap-2">
-              <span id="selectedRetirementAgeLabel"
-                class="text-[11px] font-semibold text-indigo-300">
-                Viewing: Age --
-              </span>
-              <button type="button" id="btnResetToRecommendedAge" onclick="resetToRecommendedRetirementAge()"
-                class="hidden px-2.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-[11px] font-bold text-emerald-300 transition">
-                ↺ Back to Recommended
-              </button>
-            </div>
-          </div>
+          <span id="cardLongevityAge" class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight shrink-0">
+            Age --
+          </span>
         </div>
       </div>
 
-      <!-- CHART 1: SIMULATED FUTURE WEALTH — MEDIAN CASE vs WORST CASE (SEPARATE MARKER TOOLTIPS) -->
+      <!-- CHART 1: SIMULATED FUTURE WEALTH — MOST LIKELY vs WORST CASE -->
       <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 class="text-base font-bold text-white">Your Wealth Over Time: Median Case vs. Worst Case</h3>
+            <h3 class="text-base font-bold text-white">Your Wealth Over Time: Most Likely vs. Worst Case</h3>
             <p class="text-xs text-slate-400">
               Hover or tap anywhere on either curve to inspect that age's wealth and events.
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
-            <!-- Curve Focus Selector (Median Case Prioritized) -->
+            <!-- Curve Focus Selector -->
             <div class="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800">
               <button type="button" id="btnFocusBoth" onclick="setCurveFocus('both')"
                 class="px-2.5 py-1 text-xs font-semibold rounded-md bg-indigo-600 text-white">
@@ -1007,7 +973,7 @@
               </button>
               <button type="button" id="btnFocusP50" onclick="setCurveFocus('p50')"
                 class="px-2.5 py-1 text-xs font-semibold rounded-md text-slate-400 hover:text-white">
-                Median Case Only
+                Most Likely Only
               </button>
               <button type="button" id="btnFocusP10" onclick="setCurveFocus('p10')"
                 class="px-2.5 py-1 text-xs font-semibold rounded-md text-slate-400 hover:text-white">

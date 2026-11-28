@@ -133,6 +133,12 @@ class WealthLongevityRequest(BaseModel):
         le=10.0,
         description="Annual lifestyle creep above market inflation (% p.a.)",
     )
+    target_success_rate_pct: float = Field(
+        default=85.0,
+        ge=50.0,
+        le=99.0,
+        description="Target success rate (%) required to consider a retirement plan comfortably funded",
+    )
     post_retirement_expense_multiplier: float = Field(
         default=100.0,
         ge=30.0,
